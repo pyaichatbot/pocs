@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<!--
+    Quantum Harmonics - Generative Art
+    Based on quantum wave interference patterns and harmonic oscillations
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Harmonics - Generative Art</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&family=Lora:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        /* Anthropic Brand Colors */
+        :root {
+            --anthropic-dark: #141413;
+            --anthropic-light: #faf9f5;
+            --anthropic-mid-gray: #b0aea5;
+            --anthropic-light-gray: #e8e6dc;
+            --anthropic-orange: #d97757;
+            --anthropic-blue: #6a9bcc;
+            --anthropic-green: #788c5d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, var(--anthropic-light) 0%, #f5f3ee 100%);
+            min-height: 100vh;
+            color: var(--anthropic-dark);
+        }
+
+        .container {
+            display: flex;
+            min-height: 100vh;
+            padding: 20px;
+            gap: 20px;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 320px;
+            flex-shrink: 0;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(20, 20, 19, 0.1);
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .sidebar h1 {
+            font-family: 'Lora', serif;
+            font-size: 24px;
+            font-weight: 500;
+            color: var(--anthropic-dark);
+            margin-bottom: 8px;
+        }
+
+        .sidebar .subtitle {
+            color: var(--anthropic-mid-gray);
+            font-size: 14px;
+            margin-bottom: 32px;
+            line-height: 1.4;
+        }
+
+        /* Control Sections */
+        .control-section {
+            margin-bottom: 32px;
+        }
+
+        .control-section h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--anthropic-dark);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--anthropic-dark);
+            margin-bottom: 8px;
+        }
+
+        .control-group input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--anthropic-light-gray);
+            outline: none;
+            -webkit-appearance: none;
+            margin-bottom: 8px;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--anthropic-orange);
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        }
+
+        .control-group input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--anthropic-orange);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        }
+
+        .control-group input[type="number"] {
+            width: 100%;
+            padding: 8px 12px;
+            border: 2px solid var(--anthropic-light-gray);
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            color: var(--anthropic-dark);
+            margin-bottom: 8px;
+        }
+
+        .control-group input[type="number"]:focus {
+            outline: none;
+            border-color: var(--anthropic-orange);
+        }
+
+        .control-group input[type="color"] {
+            width: 100%;
+            height: 40px;
+            border: 2px solid var(--anthropic-light-gray);
+            border-radius: 6px;
+            cursor: pointer;
+            background: none;
+        }
+
+        .value-display {
+            font-size: 12px;
+            color: var(--anthropic-mid-gray);
+            font-weight: 500;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            flex: 1;
+        }
+
+        .btn-primary {
+            background: var(--anthropic-orange);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #c66a4a;
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: var(--anthropic-light-gray);
+            color: var(--anthropic-dark);
+        }
+
+        .btn-secondary:hover {
+            background: #d4d2c8;
+            transform: translateY(-1px);
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        /* Main Canvas Area */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #canvas-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(20, 20, 19, 0.1);
+            overflow: hidden;
+        }
+
+        .canvas-info {
+            margin-top: 16px;
+            text-align: center;
+            color: var(--anthropic-mid-gray);
+            font-size: 14px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                padding: 10px;
+            }
+            
+            .sidebar {
+                width: 100%;
+                margin-bottom: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h1>Quantum Harmonics</h1>
+            <p class="subtitle">Wave interference patterns and harmonic oscillations create emergent quantum beauty through computational processes.</p>
+            
+            <!-- Seed Section -->
+            <div class="control-section">
+                <h3>🎲 Seed</h3>
+                <div class="control-group">
+                    <label>Current Seed</label>
+                    <input type="number" id="seed-display" value="12345" readonly>
+                </div>
+                <div class="button-group">
+                    <button class="btn btn-secondary btn-small" onclick="previousSeed()">← Prev</button>
+                    <button class="btn btn-secondary btn-small" onclick="nextSeed()">Next →</button>
+                </div>
+                <div class="button-group">
+                    <button class="btn btn-primary btn-small" onclick="randomSeed()">Random</button>
+                    <button class="btn btn-secondary btn-small" onclick="jumpToSeed()">Jump</button>
+                </div>
+                <div class="control-group">
+                    <input type="number" id="jump-seed" placeholder="Enter seed number" min="1" max="999999">
+                </div>
+            </div>
+
+            <!-- Parameters Section -->
+            <div class="control-section">
+                <h3>⚙️ Parameters</h3>
+                
+                <div class="control-group">
+                    <label>Particle Count</label>
+                    <input type="range" id="particle-count" min="50" max="500" step="10" value="200" oninput="updateParam('particleCount', this.value)">
+                    <span class="value-display" id="particle-count-value">200</span>
+                </div>
+
+                <div class="control-group">
+                    <label>Wave Frequency</label>
+                    <input type="range" id="wave-freq" min="0.001" max="0.01" step="0.001" value="0.005" oninput="updateParam('waveFreq', this.value)">
+                    <span class="value-display" id="wave-freq-value">0.005</span>
+                </div>
+
+                <div class="control-group">
+                    <label>Interference Strength</label>
+                    <input type="range" id="interference" min="0.1" max="2.0" step="0.1" value="1.0" oninput="updateParam('interferenceStrength', this.value)">
+                    <span class="value-display" id="interference-value">1.0</span>
+                </div>
+
+                <div class="control-group">
+                    <label>Phase Speed</label>
+                    <input type="range" id="phase-speed" min="0.01" max="0.1" step="0.01" value="0.05" oninput="updateParam('phaseSpeed', this.value)">
+                    <span class="value-display" id="phase-speed-value">0.05</span>
+                </div>
+
+                <div class="control-group">
+                    <label>Harmonic Layers</label>
+                    <input type="range" id="harmonics" min="1" max="5" step="1" value="3" oninput="updateParam('harmonicLayers', this.value)">
+                    <span class="value-display" id="harmonics-value">3</span>
+                </div>
+            </div>
+
+            <!-- Colors Section -->
+            <div class="control-section">
+                <h3>🎨 Colors</h3>
+                
+                <div class="control-group">
+                    <label>Constructive Color</label>
+                    <input type="color" id="constructive-color" value="#ff6b35" onchange="updateParam('constructiveColor', this.value)">
+                </div>
+
+                <div class="control-group">
+                    <label>Destructive Color</label>
+                    <input type="color" id="destructive-color" value="#4a90e2" onchange="updateParam('destructiveColor', this.value)">
+                </div>
+
+                <div class="control-group">
+                    <label>Background Color</label>
+                    <input type="color" id="bg-color" value="#1a1a1a" onchange="updateParam('backgroundColor', this.value)">
+                </div>
+            </div>
+
+            <!-- Actions Section -->
+            <div class="control-section">
+                <h3>🎯 Actions</h3>
+                <div class="button-group">
+                    <button class="btn btn-primary" onclick="regenerate()">Regenerate</button>
+                    <button class="btn btn-secondary" onclick="resetParams()">Reset</button>
+                </div>
+                <div class="button-group">
+                    <button class="btn btn-secondary" onclick="downloadPNG()">Download PNG</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div id="canvas-container"></div>
+            <div class="canvas-info">
+                <p>Quantum Harmonics - Each seed reveals a different facet of quantum reality</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let canvas;
+        let particles = [];
+        let currentSeed = 12345;
+        let time = 0;
+
+        // Parameters
+        let params = {
+            particleCount: 200,
+            waveFreq: 0.005,
+            interferenceStrength: 1.0,
+            phaseSpeed: 0.05,
+            harmonicLayers: 3,
+            constructiveColor: '#ff6b35',
+            destructiveColor: '#4a90e2',
+            backgroundColor: '#1a1a1a'
+        };
+
+        // Quantum Particle Class
+        class QuantumParticle {
+            constructor(x, y, phase, frequency) {
+                this.x = x;
+                this.y = y;
+                this.phase = phase;
+                this.frequency = frequency;
+                this.originalX = x;
+                this.originalY = y;
+                this.energy = 0;
+                this.harmonicPhase = random(0, TWO_PI);
+            }
+
+            update() {
+                // Update phase based on time and frequency
+                this.phase += this.frequency * params.phaseSpeed;
+                
+                // Calculate harmonic oscillations
+                let harmonicX = 0;
+                let harmonicY = 0;
+                
+                for (let i = 1; i <= params.harmonicLayers; i++) {
+                    let harmonicFreq = this.frequency * i;
+                    let harmonicPhase = this.phase * i + this.harmonicPhase;
+                    
+                    harmonicX += sin(harmonicPhase) / i;
+                    harmonicY += cos(harmonicPhase) / i;
+                }
+                
+                // Apply harmonic motion
+                this.x = this.originalX + harmonicX * 50;
+                this.y = this.originalY + harmonicY * 50;
+                
+                // Calculate interference energy
+                this.calculateInterference();
+            }
+
+            calculateInterference() {
+                this.energy = 0;
+                
+                for (let other of particles) {
+                    if (other === this) continue;
+                    
+                    let distance = dist(this.x, this.y, other.x, other.y);
+                    if (distance < 200) {
+                        // Calculate phase difference
+                        let phaseDiff = abs(this.phase - other.phase);
+                        
+                        // Constructive interference (waves in phase)
+                        if (phaseDiff < PI/4 || phaseDiff > 7*PI/4) {
+                            this.energy += params.interferenceStrength * (1 - distance/200);
+                        }
+                        // Destructive interference (waves out of phase)
+                        else if (phaseDiff > 3*PI/4 && phaseDiff < 5*PI/4) {
+                            this.energy -= params.interferenceStrength * (1 - distance/200) * 0.5;
+                        }
+                    }
+                }
+                
+                // Add wave energy
+                this.energy += sin(this.phase * params.waveFreq * 1000) * 0.5;
+            }
+
+            display() {
+                push();
+                translate(this.x, this.y);
+                
+                // Color based on interference
+                let alpha = map(abs(this.energy), 0, 2, 50, 255);
+                let size = map(abs(this.energy), 0, 2, 2, 8);
+                
+                if (this.energy > 0) {
+                    // Constructive interference - bright warm color
+                    fill(red(params.constructiveColor), green(params.constructiveColor), blue(params.constructiveColor), alpha);
+                } else {
+                    // Destructive interference - cool color
+                    fill(red(params.destructiveColor), green(params.destructiveColor), blue(params.destructiveColor), alpha);
+                }
+                
+                noStroke();
+                circle(0, 0, size);
+                
+                // Add glow effect for high energy
+                if (abs(this.energy) > 1) {
+                    fill(red(params.constructiveColor), green(params.constructiveColor), blue(params.constructiveColor), alpha * 0.3);
+                    circle(0, 0, size * 2);
+                }
+                
+                pop();
+            }
+        }
+
+        function setup() {
+            canvas = createCanvas(800, 800);
+            canvas.parent('canvas-container');
+            
+            // Set seeded randomness
+            randomSeed(currentSeed);
+            noiseSeed(currentSeed);
+            
+            initializeParticles();
+        }
+
+        function draw() {
+            // Clear background
+            background(params.backgroundColor);
+            
+            // Update time
+            time += 0.016;
+            
+            // Update and display particles
+            for (let particle of particles) {
+                particle.update();
+                particle.display();
+            }
+            
+            // Add subtle noise overlay
+            loadPixels();
+            for (let i = 0; i < pixels.length; i += 4) {
+                let noiseVal = noise(i/10000, time) * 0.1;
+                pixels[i] = constrain(pixels[i] + noiseVal * 50, 0, 255);
+                pixels[i + 1] = constrain(pixels[i + 1] + noiseVal * 50, 0, 255);
+                pixels[i + 2] = constrain(pixels[i + 2] + noiseVal * 50, 0, 255);
+            }
+            updatePixels();
+        }
+
+        function initializeParticles() {
+            particles = [];
+            
+            // Create particles in a grid pattern with some randomness
+            let cols = floor(sqrt(params.particleCount));
+            let rows = ceil(params.particleCount / cols);
+            let cellWidth = width / cols;
+            let cellHeight = height / rows;
+            
+            for (let i = 0; i < params.particleCount; i++) {
+                let col = i % cols;
+                let row = floor(i / cols);
+                
+                let x = col * cellWidth + cellWidth/2 + random(-cellWidth/4, cellWidth/4);
+                let y = row * cellHeight + cellHeight/2 + random(-cellHeight/4, cellHeight/4);
+                
+                // Keep particles within canvas
+                x = constrain(x, 50, width - 50);
+                y = constrain(y, 50, height - 50);
+                
+                let phase = random(0, TWO_PI);
+                let frequency = random(0.5, 2.0);
+                
+                particles.push(new QuantumParticle(x, y, phase, frequency));
+            }
+        }
+
+        // Parameter update functions
+        function updateParam(paramName, value) {
+            params[paramName] = value;
+            
+            // Update display values
+            if (paramName === 'particleCount') {
+                document.getElementById('particle-count-value').textContent = value;
+                initializeParticles();
+            } else if (paramName === 'waveFreq') {
+                document.getElementById('wave-freq-value').textContent = value;
+            } else if (paramName === 'interferenceStrength') {
+                document.getElementById('interference-value').textContent = value;
+            } else if (paramName === 'phaseSpeed') {
+                document.getElementById('phase-speed-value').textContent = value;
+            } else if (paramName === 'harmonicLayers') {
+                document.getElementById('harmonics-value').textContent = value;
+            }
+        }
+
+        // Seed functions
+        function previousSeed() {
+            currentSeed = max(1, currentSeed - 1);
+            updateSeed();
+        }
+
+        function nextSeed() {
+            currentSeed += 1;
+            updateSeed();
+        }
+
+        function randomSeed() {
+            currentSeed = floor(random(1, 100000));
+            updateSeed();
+        }
+
+        function jumpToSeed() {
+            let newSeed = parseInt(document.getElementById('jump-seed').value);
+            if (newSeed && newSeed > 0) {
+                currentSeed = newSeed;
+                updateSeed();
+            }
+        }
+
+        function updateSeed() {
+            document.getElementById('seed-display').value = currentSeed;
+            document.getElementById('jump-seed').value = currentSeed;
+            
+            randomSeed(currentSeed);
+            noiseSeed(currentSeed);
+            initializeParticles();
+        }
+
+        // Action functions
+        function regenerate() {
+            randomSeed(currentSeed);
+            noiseSeed(currentSeed);
+            initializeParticles();
+        }
+
+        function resetParams() {
+            params = {
+                particleCount: 200,
+                waveFreq: 0.005,
+                interferenceStrength: 1.0,
+                phaseSpeed: 0.05,
+                harmonicLayers: 3,
+                constructiveColor: '#ff6b35',
+                destructiveColor: '#4a90e2',
+                backgroundColor: '#1a1a1a'
+            };
+            
+            // Update all sliders and inputs
+            document.getElementById('particle-count').value = params.particleCount;
+            document.getElementById('wave-freq').value = params.waveFreq;
+            document.getElementById('interference').value = params.interferenceStrength;
+            document.getElementById('phase-speed').value = params.phaseSpeed;
+            document.getElementById('harmonics').value = params.harmonicLayers;
+            document.getElementById('constructive-color').value = params.constructiveColor;
+            document.getElementById('destructive-color').value = params.destructiveColor;
+            document.getElementById('bg-color').value = params.backgroundColor;
+            
+            // Update display values
+            updateParam('particleCount', params.particleCount);
+            updateParam('waveFreq', params.waveFreq);
+            updateParam('interferenceStrength', params.interferenceStrength);
+            updateParam('phaseSpeed', params.phaseSpeed);
+            updateParam('harmonicLayers', params.harmonicLayers);
+            
+            initializeParticles();
+        }
+
+        function downloadPNG() {
+            saveCanvas(canvas, `quantum_harmonics_seed_${currentSeed}`, 'png');
+        }
+
+        // Initialize on page load
+        window.onload = function() {
+            updateSeed();
+        };
+    </script>
+</body>
+</html>

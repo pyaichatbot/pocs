@@ -1,0 +1,184 @@
+version: '3.8'
+
+###############################################################################
+# NonStop Agent Review - Complete Test Environment
+# Includes: n8n, Redis, Mock SFTP, Mock Review API
+###############################################################################
+
+services:
+  # n8n Workflow Engine
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: nonstop-n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=admin123
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - EXECUTIONS_PROCESS=main
+      - WEBHOOK_URL=http://localhost:5678/
+      
+      # Environment variables for workflow
+      - N8N_SFTP_HOST=sftp-server
+      - N8N_SFTP_PORT=22
+      - N8N_SFTP_USER=nonstop
+      - N8N_SFTP_PASSWORD=nonstop123
+      - REVIEW_API_BASE=http://review-api:3000
+      - REVIEW_API_TOKEN=Bearer test_token_12345
+      - SLACK_WEBHOOK=http://mock-slack:8080/webhook
+      - WEBHOOK_SECRET=test_secret_key_32_characters_long
+      - CUSTOMER_WEBHOOK_URL=http://mock-webhook:8081/callback
+      - SFTP_ALLOWED_GLOBS=*.cob,*.cbl,*.sql,*.ddl,*.jcl
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password_123
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - /tmp/nonstop_reviews:/tmp/nonstop_reviews
+    depends_on:
+      - redis
+      - sftp-server
+      - review-api
+    networks:
+      - nonstop-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Queue
+  redis:
+    image: redis:7-alpine
+    container_name: nonstop-redis
+    command: redis-server --requirepass redis_password_123 --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - nonstop-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Mock SFTP Server (for Mode B testing)
+  sftp-server:
+    image: atmoz/sftp:latest
+    container_name: nonstop-sftp
+    ports:
+      - "2222:22"
+    command: nonstop:nonstop123:1001:1001:/code/reviews
+    volumes:
+      - sftp_data:/home/nonstop/code/reviews
+      - ./test-data:/home/nonstop/code/reviews/test-data:ro
+    networks:
+      - nonstop-network
+    restart: unless-stopped
+
+  # Mock Review API
+  review-api:
+    image: node:18-alpine
+    container_name: nonstop-review-api
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - REDIS_URL=redis://:redis_password_123@redis:6379
+    volumes:
+      - ./mock-api:/app
+    command: sh -c "npm install && node server.js"
+    depends_on:
+      - redis
+    networks:
+      - nonstop-network
+    restart: unless-stopped
+
+  # Mock Slack Webhook Receiver
+  mock-slack:
+    image: mendhak/http-https-echo:latest
+    container_name: nonstop-mock-slack
+    ports:
+      - "8080:8080"
+    environment:
+      - HTTP_PORT=8080
+      - LOG_WITHOUT_NEWLINE=true
+    networks:
+      - nonstop-network
+    restart: unless-stopped
+
+  # Mock Customer Webhook Receiver
+  mock-webhook:
+    image: mendhak/http-https-echo:latest
+    container_name: nonstop-mock-webhook
+    ports:
+      - "8081:8081"
+    environment:
+      - HTTP_PORT=8081
+      - LOG_WITHOUT_NEWLINE=true
+    networks:
+      - nonstop-network
+    restart: unless-stopped
+
+volumes:
+  n8n_data:
+    name: nonstop_n8n_data
+  redis_data:
+    name: nonstop_redis_data
+  sftp_data:
+    name: nonstop_sftp_data
+
+networks:
+  nonstop-network:
+    name: nonstop-network
+    driver: bridge
+
+###############################################################################
+# Usage Instructions:
+#
+# 1. Start all services:
+#    docker-compose up -d
+#
+# 2. Access n8n:
+#    http://localhost:5678
+#    Username: admin
+#    Password: admin123
+#
+# 3. Import workflow:
+#    - Navigate to Workflows
+#    - Click "Import from File"
+#    - Select nonstop_agent_review.json
+#
+# 4. Test Mode A (ZIP Upload):
+#    ./test-workflow.sh
+#
+# 5. Test Mode B (SFTP):
+#    - Add files to ./test-data/
+#    - Trigger SFTP cron manually in n8n
+#
+# 6. View logs:
+#    docker-compose logs -f n8n
+#    docker-compose logs -f redis
+#    docker-compose logs -f review-api
+#
+# 7. Monitor Redis queue:
+#    redis-cli -h localhost -p 6379 -a redis_password_123 LLEN nonstop_review_jobs
+#
+# 8. Stop all services:
+#    docker-compose down
+#
+# 9. Clean up (including volumes):
+#    docker-compose down -v
+#
+###############################################################################

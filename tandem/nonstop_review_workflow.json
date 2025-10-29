@@ -1,0 +1,401 @@
+{
+  "name": "NonStop Agent Review - SFTP Only",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "nonstop/reviews",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "webhook-entry",
+      "name": "Webhook Entry",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "nonstop-reviews-webhook"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Verify HMAC signature using raw body\nconst crypto = require('crypto');\nconst secret = $env.WEBHOOK_SECRET;\n\n// Get raw body from webhook\nconst rawBody = $input.item.binary?.data?.data || $input.item.json.rawBody || '';\nconst signature = $input.item.json.headers['x-nonstop-signature'];\n\nif (!signature) {\n  throw new Error('Missing HMAC signature');\n}\n\nconst expectedSignature = crypto\n  .createHmac('sha256', secret)\n  .update(rawBody)\n  .digest('hex');\n\nif (signature !== expectedSignature) {\n  throw new Error('Invalid HMAC signature');\n}\n\n// Parse request body for SFTP parameters\nconst body = JSON.parse(rawBody.toString());\nconst sftpPath = body.sftp_path || '/code/reviews/';\nconst allowedGlobs = body.allowed_globs || ($env.SFTP_ALLOWED_GLOBS || '*.cob,*.cbl,*.sql,*.ddl,*.jcl,*.job,*.txt').split(',');\n\nreturn [{\n  json: {\n    sftp_path: sftpPath,\n    allowed_globs: allowedGlobs,\n    job_id: `job_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "verify-signature",
+      "name": "Verify Signature & Parse Request",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "list",
+        "path": "={{$json.sftp_path}}",
+        "options": {
+          "recursive": true
+        }
+      },
+      "id": "sftp-list-files",
+      "name": "SFTP List Files",
+      "type": "n8n-nodes-base.sftp",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "credentials": {
+        "sftp": {
+          "id": "2",
+          "name": "NonStop SFTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Filter files by allowlist with robust pattern matching\nconst allowedGlobs = $json.allowed_globs || [];\nconst denyPatterns = ['temp/', 'backup/', '.git/', 'tmp/'];\n\nconst items = $input.all();\nconst filtered = items.filter(item => {\n  const path = item.json.path;\n  \n  // Check deny patterns first\n  if (denyPatterns.some(p => path.includes(p))) {\n    return false;\n  }\n  \n  // Check allow globs with proper regex\n  return allowedGlobs.some(glob => {\n    const trimmed = glob.trim();\n    if (!trimmed) return false;\n    \n    // Escape dots and convert * to .* for regex\n    const pattern = trimmed\n      .replace(/\\./g, '\\\\.')\n      .replace(/\\*/g, '.*')\n      .replace(/\\?/g, '.');\n    \n    const regex = new RegExp(`^${pattern}$`, 'i');\n    return regex.test(path);\n  });\n});\n\nreturn filtered;"
+      },
+      "id": "filter-allowed-files",
+      "name": "Filter Allowed Files",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "path": "={{$json.path}}",
+        "options": {}
+      },
+      "id": "sftp-download-files",
+      "name": "SFTP Download Files",
+      "type": "n8n-nodes-base.sftp",
+      "typeVersion": 1,
+      "position": [1120, 300],
+      "credentials": {
+        "sftp": {
+          "id": "2",
+          "name": "NonStop SFTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Store downloaded files to temp location\nconst fs = require('fs');\nconst path = require('path');\nconst os = require('os');\nconst crypto = require('crypto');\n\nconst items = $input.all();\nconst jobId = items[0].json.job_id;\nconst tempDir = path.join(os.tmpdir(), 'nonstop_reviews', jobId);\n\nif (!fs.existsSync(tempDir)) {\n  fs.mkdirSync(tempDir, { recursive: true });\n}\n\nconst extractedPath = path.join(tempDir, 'extracted');\nfs.mkdirSync(extractedPath, { recursive: true });\n\nconst storedFiles = [];\n\nfor (const item of items) {\n  const fileName = item.json.name || path.basename(item.json.path);\n  const filePath = path.join(extractedPath, fileName);\n  \n  // Write binary data to file\n  fs.writeFileSync(filePath, item.binary.data.data);\n  \n  storedFiles.push({\n    original_path: item.json.path,\n    local_path: filePath,\n    name: fileName,\n    size: item.binary.data.fileSize || 0\n  });\n}\n\nreturn [{\n  json: {\n    job_id: jobId,\n    temp_path: tempDir,\n    extracted_path: extractedPath,\n    stored_files: storedFiles,\n    processing_stage: 'normalize'\n  }\n}];"
+      },
+      "id": "store-temp-files",
+      "name": "Store Temp Files",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Normalize: Convert EBCDIC, detect encoding, format\nconst fs = require('fs');\nconst path = require('path');\nconst { execSync } = require('child_process');\n\nconst item = $input.item.json;\nconst extractedPath = item.extracted_path;\nconst normalizedPath = path.join(item.temp_path, 'normalized');\n\nfs.mkdirSync(normalizedPath, { recursive: true });\n\n// Find all files\nconst files = execSync(`find ${extractedPath} -type f`)\n  .toString()\n  .split('\\n')\n  .filter(Boolean);\n\nconst normalizedFiles = [];\n\nfor (const file of files) {\n  const basename = path.basename(file);\n  const outPath = path.join(normalizedPath, basename);\n  \n  try {\n    // Try EBCDIC conversion (if iconv available)\n    execSync(`iconv -f EBCDIC-US -t UTF-8 ${file} > ${outPath}`);\n    normalizedFiles.push({ path: outPath, encoding: 'UTF-8', converted: true });\n  } catch (e) {\n    // Copy as-is if not EBCDIC\n    fs.copyFileSync(file, outPath);\n    normalizedFiles.push({ path: outPath, encoding: 'unknown', converted: false });\n  }\n}\n\nreturn [{\n  json: {\n    ...item,\n    normalized_path: normalizedPath,\n    normalized_files: normalizedFiles,\n    processing_stage: 'classify'\n  }\n}];"
+      },
+      "id": "normalize-files",
+      "name": "Normalize Files",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Classify files by type and language\nconst fs = require('fs');\nconst path = require('path');\n\nconst item = $input.item.json;\nconst files = item.normalized_files;\n\nconst classified = files.map(f => {\n  const ext = path.extname(f.path).toLowerCase();\n  const content = fs.readFileSync(f.path, 'utf-8');\n  \n  let type = 'unknown';\n  let language = 'unknown';\n  \n  // Simple classification\n  if (['.cob', '.cbl'].includes(ext) || content.includes('IDENTIFICATION DIVISION')) {\n    type = 'source';\n    language = 'cobol';\n  } else if (['.sql', '.ddl'].includes(ext)) {\n    type = 'database';\n    language = 'sql';\n  } else if (['.jcl', '.job'].includes(ext)) {\n    type = 'job';\n    language = 'jcl';\n  } else if (['.txt', '.doc'].includes(ext)) {\n    type = 'documentation';\n    language = 'text';\n  }\n  \n  return {\n    ...f,\n    type,\n    language,\n    size: content.length,\n    lines: content.split('\\n').length\n  };\n});\n\nreturn [{\n  json: {\n    ...item,\n    classified_files: classified,\n    processing_stage: 'static_analysis'\n  }\n}];"
+      },
+      "id": "classify-files",
+      "name": "Classify Files",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Run static analysis rules\nconst fs = require('fs');\n\nconst item = $input.item.json;\nconst files = item.classified_files;\n\nconst findings = [];\n\nfor (const file of files) {\n  const content = fs.readFileSync(file.path, 'utf-8');\n  const fileFindings = [];\n  \n  // Static rules\n  if (file.language === 'cobol') {\n    // Check for deprecated commands\n    if (/STOP RUN/i.test(content)) {\n      fileFindings.push({\n        rule: 'deprecated_stop_run',\n        severity: 'medium',\n        line: content.split('\\n').findIndex(l => /STOP RUN/i.test(l)) + 1,\n        message: 'STOP RUN is deprecated, use GOBACK'\n      });\n    }\n    \n    // Check for hardcoded literals\n    const literals = content.match(/\"[^\"]{20,}\"/g);\n    if (literals && literals.length > 5) {\n      fileFindings.push({\n        rule: 'excessive_literals',\n        severity: 'low',\n        count: literals.length,\n        message: 'Consider using constants for repeated literals'\n      });\n    }\n    \n    // Check for missing error handling\n    if (content.includes('CALL') && !content.includes('ON EXCEPTION')) {\n      fileFindings.push({\n        rule: 'missing_error_handling',\n        severity: 'high',\n        message: 'CALL statements should include ON EXCEPTION error handling'\n      });\n    }\n  }\n  \n  if (file.language === 'sql') {\n    // Check for SELECT *\n    if (/SELECT\\s+\\*/i.test(content)) {\n      fileFindings.push({\n        rule: 'select_star',\n        severity: 'medium',\n        message: 'Avoid SELECT *, specify columns explicitly'\n      });\n    }\n    \n    // Check for missing WHERE clauses on UPDATE/DELETE\n    if ((/UPDATE\\s+\\w+/i.test(content) || /DELETE\\s+FROM/i.test(content)) && !/WHERE/i.test(content)) {\n      fileFindings.push({\n        rule: 'missing_where_clause',\n        severity: 'high',\n        message: 'UPDATE/DELETE statements should include WHERE clause'\n      });\n    }\n  }\n  \n  if (fileFindings.length > 0) {\n    findings.push({\n      file: file.path,\n      type: file.type,\n      language: file.language,\n      findings: fileFindings\n    });\n  }\n}\n\nreturn [{\n  json: {\n    ...item,\n    static_findings: findings,\n    processing_stage: 'llm_review'\n  }\n}];"
+      },
+      "id": "static-analysis",
+      "name": "Static Analysis",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Redact sensitive data before LLM\nconst fs = require('fs');\n\nconst item = $input.item.json;\nconst files = item.classified_files;\n\nconst redactedFiles = [];\n\nfor (const file of files) {\n  let content = fs.readFileSync(file.path, 'utf-8');\n  \n  // Redact patterns\n  content = content.replace(/PASSWORD\\s*=\\s*['\"]?[^'\"\\s]+['\"]?/gi, 'PASSWORD=***REDACTED***');\n  content = content.replace(/\\b\\d{3}-\\d{2}-\\d{4}\\b/g, '***-**-****'); // SSN\n  content = content.replace(/\\b\\d{16}\\b/g, '****-****-****-****'); // Credit card\n  content = content.replace(/USER\\s*=\\s*['\"]?[^'\"\\s]+['\"]?/gi, 'USER=***REDACTED***');\n  content = content.replace(/HOST\\s*=\\s*['\"]?[^'\"\\s]+['\"]?/gi, 'HOST=***REDACTED***');\n  \n  redactedFiles.push({\n    ...file,\n    content: content.substring(0, 4000) // Limit for LLM context\n  });\n}\n\nreturn [{\n  json: {\n    ...item,\n    redacted_files: redactedFiles,\n    processing_stage: 'llm_review'\n  }\n}];"
+      },
+      "id": "redact-sensitive-data",
+      "name": "Redact Sensitive Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.REVIEW_API_BASE}}/v1/llm/analyze",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "job_id",
+              "value": "={{$json.job_id}}"
+            },
+            {
+              "name": "files",
+              "value": "={{JSON.stringify($json.redacted_files)}}"
+            },
+            {
+              "name": "static_findings",
+              "value": "={{JSON.stringify($json.static_findings)}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "enabled": true,
+            "maxRetries": 2,
+            "retryInterval": 5000
+          }
+        }
+      },
+      "id": "llm-review",
+      "name": "LLM Review",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2440, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "3",
+          "name": "Review API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Map LLM response to llm_analysis\nconst item = $input.item;\nconst llmResponse = item.json;\n\nreturn [{\n  json: {\n    ...item.json,\n    llm_analysis: llmResponse\n  }\n}];"
+      },
+      "id": "map-llm-response",
+      "name": "Map LLM Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2660, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Consolidate all findings\nconst item = $input.item;\nconst staticFindings = item.json.static_findings || [];\nconst llmFindings = item.json.llm_analysis || {};\n\nconst summary = {\n  job_id: item.json.job_id,\n  timestamp: new Date().toISOString(),\n  file_count: item.json.classified_files.length,\n  \n  findings: {\n    static: {\n      total: staticFindings.length,\n      by_severity: {\n        high: staticFindings.filter(f => f.findings.some(ff => ff.severity === 'high')).length,\n        medium: staticFindings.filter(f => f.findings.some(ff => ff.severity === 'medium')).length,\n        low: staticFindings.filter(f => f.findings.some(ff => ff.severity === 'low')).length\n      },\n      details: staticFindings\n    },\n    llm: llmFindings\n  },\n  \n  recommendations: llmFindings.recommendations || [],\n  risk_score: llmFindings.risk_score || 0,\n  \n  processing_stages: [\n    'sftp_list',\n    'filter', \n    'download',\n    'normalize',\n    'classify',\n    'static_analysis',\n    'llm_review',\n    'consolidate'\n  ],\n  \n  status: 'completed'\n};\n\nreturn [{\n  json: summary\n}];"
+      },
+      "id": "consolidate-findings",
+      "name": "Consolidate Findings",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2880, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Generate HTML report\nconst item = $input.item.json;\nconst findings = item;\n\nconst staticSummary = findings.findings?.static || {};\nconst highCount = staticSummary.by_severity?.high || 0;\nconst mediumCount = staticSummary.by_severity?.medium || 0;\nconst lowCount = staticSummary.by_severity?.low || 0;\nconst totalFindings = highCount + mediumCount + lowCount;\n\nconst riskColor = findings.risk_score > 70 ? '#dc2626' : \n                  findings.risk_score > 40 ? '#d97706' : '#059669';\nconst riskLabel = findings.risk_score > 70 ? 'High Risk' : \n                  findings.risk_score > 40 ? 'Medium Risk' : 'Low Risk';\n\nconst html = `\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>NonStop Code Review Report</title>\n    <style>\n        * { margin: 0; padding: 0; box-sizing: border-box; }\n        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #1f2937; background: #f9fafb; }\n        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }\n        .header { background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: white; padding: 2rem; border-radius: 12px; margin-bottom: 2rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }\n        .header h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 0.5rem; }\n        .header p { font-size: 1.1rem; opacity: 0.9; }\n        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }\n        .stat-card { background: white; padding: 1.5rem; border-radius: 12px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); border-left: 4px solid #3b82f6; }\n        .stat-card h3 { font-size: 1.25rem; font-weight: 600; margin-bottom: 0.5rem; color: #374151; }\n        .stat-value { font-size: 2rem; font-weight: 700; color: #1f2937; }\n        .risk-card { background: white; padding: 1.5rem; border-radius: 12px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); border-left: 4px solid ${riskColor}; margin-bottom: 2rem; }\n        .risk-score { font-size: 3rem; font-weight: 700; color: ${riskColor}; }\n        .findings-section { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); margin-bottom: 2rem; }\n        .findings-section h2 { font-size: 1.5rem; font-weight: 600; margin-bottom: 1rem; color: #374151; }\n        .finding-item { padding: 1rem; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 1rem; }\n        .finding-header { display: flex; justify-content: between; align-items: center; margin-bottom: 0.5rem; }\n        .severity { padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 500; }\n        .severity-high { background: #fef2f2; color: #dc2626; }\n        .severity-medium { background: #fffbeb; color: #d97706; }\n        .severity-low { background: #f0fdf4; color: #059669; }\n        .file-path { font-family: 'Monaco', 'Menlo', monospace; font-size: 0.875rem; color: #6b7280; margin-bottom: 0.5rem; }\n        .recommendations { background: #f0f9ff; padding: 1.5rem; border-radius: 12px; border-left: 4px solid #0ea5e9; margin-bottom: 2rem; }\n        .recommendations h3 { color: #0c4a6e; margin-bottom: 1rem; }\n        .recommendations ul { list-style: none; }\n        .recommendations li { padding: 0.5rem 0; border-bottom: 1px solid #bae6fd; }\n        .recommendations li:last-child { border-bottom: none; }\n        .footer { text-align: center; padding: 2rem; color: #6b7280; font-size: 0.875rem; }\n        .no-findings { text-align: center; padding: 3rem; color: #6b7280; font-style: italic; }\n    </style>\n</head>\n<body>\n    <div class=\"container\">\n        <div class=\"header\">\n            <h1>NonStop Code Review Report</h1>\n            <p>Job ID: ${findings.job_id} | Generated: ${new Date(findings.timestamp).toLocaleString()}</p>\n        </div>\n        \n        <div class=\"stats-grid\">\n            <div class=\"stat-card\">\n                <h3>Files Analyzed</h3>\n                <div class=\"stat-value\">${findings.file_count}</div>\n            </div>\n            <div class=\"stat-card\">\n                <h3>Total Findings</h3>\n                <div class=\"stat-value\">${totalFindings}</div>\n            </div>\n            <div class=\"stat-card\">\n                <h3>High Severity</h3>\n                <div class=\"stat-value\" style=\"color: #dc2626;\">${highCount}</div>\n            </div>\n            <div class=\"stat-card\">\n                <h3>Medium Severity</h3>\n                <div class=\"stat-value\" style=\"color: #d97706;\">${mediumCount}</div>\n            </div>\n            <div class=\"stat-card\">\n                <h3>Low Severity</h3>\n                <div class=\"stat-value\" style=\"color: #059669;\">${lowCount}</div>\n            </div>\n        </div>\n        \n        <div class=\"risk-card\">\n            <h2>Risk Assessment</h2>\n            <div class=\"risk-score\">${findings.risk_score}/100</div>\n            <p style=\"font-size: 1.25rem; font-weight: 600; color: ${riskColor};\">${riskLabel}</p>\n        </div>\n        \n        ${findings.recommendations && findings.recommendations.length > 0 ? `\n        <div class=\"recommendations\">\n            <h3>Recommendations</h3>\n            <ul>\n                ${findings.recommendations.map(rec => `<li>${rec}</li>`).join('')}\n            </ul>\n        </div>\n        ` : ''}\n        \n        <div class=\"findings-section\">\n            <h2>Detailed Findings</h2>\n            ${totalFindings === 0 ? \n                '<div class=\"no-findings\">No issues found in the analyzed code.</div>' :\n                staticSummary.details?.map(fileFinding => `\n                    <div class=\"finding-item\">\n                        <div class=\"file-path\">${fileFinding.file}</div>\n                        ${fileFinding.findings.map(finding => `\n                            <div class=\"finding-header\">\n                                <span class=\"severity severity-${finding.severity}\">${finding.severity.toUpperCase()}</span>\n                            </div>\n                            <p><strong>${finding.rule}:</strong> ${finding.message}</p>\n                            ${finding.line ? `<p><em>Line ${finding.line}</em></p>` : ''}\n                        `).join('')}\n                    </div>\n                `).join('')\n            }\n        </div>\n        \n        <div class=\"footer\">\n            <p>Generated by NonStop Agent Review System</p>\n        </div>\n    </div>\n</body>\n</html>`;\n\nreturn [{\n  json: {\n    ...findings,\n    html_report: html\n  }\n}];"
+      },
+      "id": "generate-html-report",
+      "name": "Generate HTML Report",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [3100, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{$json.html_report}}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "headers": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-cache"
+              }
+            ]
+          }
+        }
+      },
+      "id": "webhook-response-html",
+      "name": "Webhook Response HTML",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [3320, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Cleanup temp files\nconst fs = require('fs');\nconst { execSync } = require('child_process');\n\nconst item = $input.item.json;\n\nif (item.temp_path) {\n  try {\n    execSync(`rm -rf ${item.temp_path}`);\n  } catch (e) {\n    console.error('Cleanup failed:', e);\n  }\n}\n\nreturn [{\n  json: {\n    job_id: item.job_id,\n    status: 'completed',\n    cleaned: true\n  }\n}];"
+      },
+      "id": "cleanup-temp",
+      "name": "Cleanup Temp Files",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [3540, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Entry": {
+      "main": [
+        [
+          {
+            "node": "Verify Signature & Parse Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Signature & Parse Request": {
+      "main": [
+        [
+          {
+            "node": "SFTP List Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SFTP List Files": {
+      "main": [
+        [
+          {
+            "node": "Filter Allowed Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Allowed Files": {
+      "main": [
+        [
+          {
+            "node": "SFTP Download Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SFTP Download Files": {
+      "main": [
+        [
+          {
+            "node": "Store Temp Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Temp Files": {
+      "main": [
+        [
+          {
+            "node": "Normalize Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Files": {
+      "main": [
+        [
+          {
+            "node": "Classify Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Files": {
+      "main": [
+        [
+          {
+            "node": "Static Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Static Analysis": {
+      "main": [
+        [
+          {
+            "node": "Redact Sensitive Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redact Sensitive Data": {
+      "main": [
+        [
+          {
+            "node": "LLM Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM Review": {
+      "main": [
+        [
+          {
+            "node": "Map LLM Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map LLM Response": {
+      "main": [
+        [
+          {
+            "node": "Consolidate Findings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consolidate Findings": {
+      "main": [
+        [
+          {
+            "node": "Generate HTML Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate HTML Report": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response HTML",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Cleanup Temp Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
+      

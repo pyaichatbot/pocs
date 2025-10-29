@@ -1,0 +1,479 @@
+{
+  "name": "NonStop Agent Review",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "nonstop/reviews",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "webhook-entry",
+      "name": "Webhook Entry",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "nonstop-reviews-webhook"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Verify HMAC signature\nconst crypto = require('crypto');\nconst secret = $env.WEBHOOK_SECRET;\n\nconst signature = $input.item.json.headers['x-nonstop-signature'];\nconst body = $input.item.json.body;\n\nconst expectedSignature = crypto\n  .createHmac('sha256', secret)\n  .update(JSON.stringify(body))\n  .digest('hex');\n\nif (signature !== expectedSignature) {\n  throw new Error('Invalid HMAC signature');\n}\n\nreturn $input.all();"
+      },
+      "id": "verify-signature",
+      "name": "Verify Signature",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.body.mode}}",
+              "operation": "equals",
+              "value2": "zip"
+            }
+          ]
+        }
+      },
+      "id": "mode-router",
+      "name": "Mode Router",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// MODE A: Process ZIP upload\nconst crypto = require('crypto');\nconst items = $input.all();\nconst item = items[0].json;\n\n// Extract multipart data\nconst code_bundle = item.body.code_bundle; // binary file\nconst meta = JSON.parse(item.body.meta || '{}');\n\n// Generate job_id\nconst job_id = `job_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;\n\n// Validate file size (max 100MB)\nconst maxSize = 100 * 1024 * 1024;\nif (code_bundle.fileSize > maxSize) {\n  throw new Error(`File size exceeds ${maxSize} bytes`);\n}\n\n// Compute bundle hash\nconst hash = crypto.createHash('sha256')\n  .update(code_bundle.data)\n  .digest('hex');\n\nreturn [{\n  json: {\n    job_id,\n    mode: 'zip',\n    bundle_hash: hash,\n    meta,\n    timestamp: new Date().toISOString(),\n    status: 'queued'\n  },\n  binary: {\n    code_bundle: code_bundle\n  }\n}];"
+      },
+      "id": "process-zip-upload",
+      "name": "Process ZIP Upload",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "operation": "publish",
+        "queue": "nonstop_review_jobs",
+        "message": "={{JSON.stringify($json)}}",
+        "options": {
+          "persistent": true
+        }
+      },
+      "id": "enqueue-job",
+      "name": "Enqueue Job",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [1120, 200],
+      "credentials": {
+        "redis": {
+          "id": "1",
+          "name": "Redis Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{JSON.stringify({\n  job_id: $json.job_id,\n  status: 'queued',\n  message: 'Review job queued for processing'\n})}}",
+        "options": {
+          "responseCode": 202,
+          "responseHeaders": {
+            "headers": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "webhook-response-202",
+      "name": "Webhook Response 202",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "sftp-cron-trigger",
+      "name": "SFTP Cron Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "operation": "list",
+        "path": "/code/reviews/",
+        "options": {
+          "recursive": true
+        }
+      },
+      "id": "sftp-list-files",
+      "name": "SFTP List Files",
+      "type": "n8n-nodes-base.sftp",
+      "typeVersion": 1,
+      "position": [1120, 400],
+      "credentials": {
+        "sftp": {
+          "id": "2",
+          "name": "NonStop SFTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// MODE B: Filter files by allowlist\nconst allowedGlobs = ($env.SFTP_ALLOWED_GLOBS || '*.cob,*.sql,*.ddl').split(',');\nconst denyPatterns = ['temp/', 'backup/', '.git/'];\n\nconst items = $input.all();\nconst filtered = items.filter(item => {\n  const path = item.json.path;\n  \n  // Check deny patterns\n  if (denyPatterns.some(p => path.includes(p))) {\n    return false;\n  }\n  \n  // Check allow globs (simple pattern matching)\n  return allowedGlobs.some(glob => {\n    const pattern = glob.trim().replace('*', '.*');\n    return new RegExp(pattern).test(path);\n  });\n});\n\nreturn filtered;"
+      },
+      "id": "filter-allowed-files",
+      "name": "Filter Allowed Files",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "path": "={{$json.path}}",
+        "options": {}
+      },
+      "id": "sftp-download-files",
+      "name": "SFTP Download Files",
+      "type": "n8n-nodes-base.sftp",
+      "typeVersion": 1,
+      "position": [1560, 400],
+      "credentials": {
+        "sftp": {
+          "id": "2",
+          "name": "NonStop SFTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Create ZIP bundle from downloaded files\nconst archiver = require('archiver');\nconst crypto = require('crypto');\nconst { Readable } = require('stream');\n\nconst items = $input.all();\nconst job_id = `job_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;\n\n// Aggregate files into ZIP\nconst archive = archiver('zip', { zlib: { level: 9 } });\nconst chunks = [];\n\narchive.on('data', chunk => chunks.push(chunk));\n\nfor (const item of items) {\n  archive.append(item.binary.data.data, { name: item.json.name });\n}\n\nawait archive.finalize();\nconst zipBuffer = Buffer.concat(chunks);\n\nconst hash = crypto.createHash('sha256').update(zipBuffer).digest('hex');\n\nreturn [{\n  json: {\n    job_id,\n    mode: 'sftp',\n    bundle_hash: hash,\n    meta: {\n      source: 'sftp',\n      file_count: items.length,\n      paths: items.map(i => i.json.path)\n    },\n    timestamp: new Date().toISOString(),\n    status: 'queued'\n  },\n  binary: {\n    code_bundle: {\n      data: zipBuffer,\n      mimeType: 'application/zip',\n      fileName: `nonstop_bundle_${job_id}.zip`\n    }\n  }\n}];"
+      },
+      "id": "create-zip-bundle",
+      "name": "Create ZIP Bundle",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1780, 400]
+    },
+    {
+      "parameters": {
+        "operation": "subscribe",
+        "queue": "nonstop_review_jobs"
+      },
+      "id": "dequeue-job",
+      "name": "Dequeue Job",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [240, 600],
+      "credentials": {
+        "redis": {
+          "id": "1",
+          "name": "Redis Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Store binary to temp location\nconst fs = require('fs');\nconst path = require('path');\nconst os = require('os');\n\nconst item = $input.item;\nconst job_id = item.json.job_id;\nconst tempDir = path.join(os.tmpdir(), 'nonstop_reviews', job_id);\n\nif (!fs.existsSync(tempDir)) {\n  fs.mkdirSync(tempDir, { recursive: true });\n}\n\nconst bundlePath = path.join(tempDir, 'code_bundle.zip');\nfs.writeFileSync(bundlePath, item.binary.code_bundle.data);\n\nreturn [{\n  json: {\n    ...item.json,\n    temp_path: tempDir,\n    bundle_path: bundlePath,\n    processing_stage: 'unpack'\n  }\n}];"
+      },
+      "id": "store-temp-bundle",
+      "name": "Store Temp Bundle",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 600]
+    },
+    {
+      "parameters": {
+        "command": "unzip -o {{$json.bundle_path}} -d {{$json.temp_path}}/extracted"
+      },
+      "id": "unpack-bundle",
+      "name": "Unpack Bundle",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [680, 600]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Normalize: Convert EBCDIC, detect encoding, format\nconst fs = require('fs');\nconst path = require('path');\nconst { execSync } = require('child_process');\n\nconst item = $input.item.json;\nconst extractedPath = path.join(item.temp_path, 'extracted');\nconst normalizedPath = path.join(item.temp_path, 'normalized');\n\nfs.mkdirSync(normalizedPath, { recursive: true });\n\n// Find all files\nconst files = execSync(`find ${extractedPath} -type f`)\n  .toString()\n  .split('\\n')\n  .filter(Boolean);\n\nconst normalizedFiles = [];\n\nfor (const file of files) {\n  const basename = path.basename(file);\n  const outPath = path.join(normalizedPath, basename);\n  \n  try {\n    // Try EBCDIC conversion (if iconv available)\n    execSync(`iconv -f EBCDIC-US -t UTF-8 ${file} > ${outPath}`);\n    normalizedFiles.push({ path: outPath, encoding: 'UTF-8', converted: true });\n  } catch (e) {\n    // Copy as-is if not EBCDIC\n    fs.copyFileSync(file, outPath);\n    normalizedFiles.push({ path: outPath, encoding: 'unknown', converted: false });\n  }\n}\n\nreturn [{\n  json: {\n    ...item,\n    normalized_path: normalizedPath,\n    normalized_files: normalizedFiles,\n    processing_stage: 'classify'\n  }\n}];"
+      },
+      "id": "normalize-files",
+      "name": "Normalize Files",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 600]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Classify files by type and language\nconst fs = require('fs');\nconst path = require('path');\n\nconst item = $input.item.json;\nconst files = item.normalized_files;\n\nconst classified = files.map(f => {\n  const ext = path.extname(f.path).toLowerCase();\n  const content = fs.readFileSync(f.path, 'utf-8');\n  \n  let type = 'unknown';\n  let language = 'unknown';\n  \n  // Simple classification\n  if (['.cob', '.cbl'].includes(ext) || content.includes('IDENTIFICATION DIVISION')) {\n    type = 'source';\n    language = 'cobol';\n  } else if (['.sql', '.ddl'].includes(ext)) {\n    type = 'database';\n    language = 'sql';\n  } else if (['.jcl', '.job'].includes(ext)) {\n    type = 'job';\n    language = 'jcl';\n  } else if (['.txt', '.doc'].includes(ext)) {\n    type = 'documentation';\n    language = 'text';\n  }\n  \n  return {\n    ...f,\n    type,\n    language,\n    size: content.length,\n    lines: content.split('\\n').length\n  };\n});\n\nreturn [{\n  json: {\n    ...item,\n    classified_files: classified,\n    processing_stage: 'static_analysis'\n  }\n}];"
+      },
+      "id": "classify-files",
+      "name": "Classify Files",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1120, 600]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Run static analysis rules\nconst fs = require('fs');\n\nconst item = $input.item.json;\nconst files = item.classified_files;\n\nconst findings = [];\n\nfor (const file of files) {\n  const content = fs.readFileSync(file.path, 'utf-8');\n  const fileFindings = [];\n  \n  // Static rules\n  if (file.language === 'cobol') {\n    // Check for deprecated commands\n    if (/STOP RUN/i.test(content)) {\n      fileFindings.push({\n        rule: 'deprecated_stop_run',\n        severity: 'medium',\n        line: content.split('\\n').findIndex(l => /STOP RUN/i.test(l)) + 1,\n        message: 'STOP RUN is deprecated, use GOBACK'\n      });\n    }\n    \n    // Check for hardcoded literals\n    const literals = content.match(/\"[^\"]{20,}\"/g);\n    if (literals && literals.length > 5) {\n      fileFindings.push({\n        rule: 'excessive_literals',\n        severity: 'low',\n        count: literals.length,\n        message: 'Consider using constants for repeated literals'\n      });\n    }\n  }\n  \n  if (file.language === 'sql') {\n    // Check for SELECT *\n    if (/SELECT\\s+\\*/i.test(content)) {\n      fileFindings.push({\n        rule: 'select_star',\n        severity: 'medium',\n        message: 'Avoid SELECT *, specify columns explicitly'\n      });\n    }\n  }\n  \n  if (fileFindings.length > 0) {\n    findings.push({\n      file: file.path,\n      type: file.type,\n      language: file.language,\n      findings: fileFindings\n    });\n  }\n}\n\nreturn [{\n  json: {\n    ...item,\n    static_findings: findings,\n    processing_stage: 'llm_review'\n  }\n}];"
+      },
+      "id": "static-analysis",
+      "name": "Static Analysis",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1340, 600]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Redact sensitive data before LLM\nconst fs = require('fs');\n\nconst item = $input.item.json;\nconst files = item.classified_files;\n\nconst redactedFiles = [];\n\nfor (const file of files) {\n  let content = fs.readFileSync(file.path, 'utf-8');\n  \n  // Redact patterns\n  content = content.replace(/PASSWORD\\s*=\\s*['\"]?[^'\"\\s]+['\"]?/gi, 'PASSWORD=***REDACTED***');\n  content = content.replace(/\\b\\d{3}-\\d{2}-\\d{4}\\b/g, '***-**-****'); // SSN\n  content = content.replace(/\\b\\d{16}\\b/g, '****-****-****-****'); // Credit card\n  \n  redactedFiles.push({\n    ...file,\n    content: content.substring(0, 4000) // Limit for LLM context\n  });\n}\n\nreturn [{\n  json: {\n    ...item,\n    redacted_files: redactedFiles,\n    processing_stage: 'llm_review'\n  }\n}];"
+      },
+      "id": "redact-sensitive-data",
+      "name": "Redact Sensitive Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1560, 600]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.REVIEW_API_BASE}}/v1/llm/analyze",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "job_id",
+              "value": "={{$json.job_id}}"
+            },
+            {
+              "name": "files",
+              "value": "={{JSON.stringify($json.redacted_files)}}"
+            },
+            {
+              "name": "static_findings",
+              "value": "={{JSON.stringify($json.static_findings)}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "llm-review",
+      "name": "LLM Review",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 600],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "3",
+          "name": "Review API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Consolidate all findings\nconst item = $input.item;\nconst staticFindings = item.json.static_findings || [];\nconst llmFindings = item.json.llm_analysis || {};\n\nconst summary = {\n  job_id: item.json.job_id,\n  bundle_hash: item.json.bundle_hash,\n  timestamp: new Date().toISOString(),\n  file_count: item.json.classified_files.length,\n  \n  findings: {\n    static: {\n      total: staticFindings.length,\n      by_severity: {\n        high: staticFindings.filter(f => f.findings.some(ff => ff.severity === 'high')).length,\n        medium: staticFindings.filter(f => f.findings.some(ff => ff.severity === 'medium')).length,\n        low: staticFindings.filter(f => f.findings.some(ff => ff.severity === 'low')).length\n      },\n      details: staticFindings\n    },\n    llm: llmFindings\n  },\n  \n  recommendations: llmFindings.recommendations || [],\n  risk_score: llmFindings.risk_score || 0,\n  \n  processing_stages: [\n    'unpack',\n    'normalize', \n    'classify',\n    'static_analysis',\n    'llm_review',\n    'consolidate'\n  ],\n  \n  status: 'completed'\n};\n\nreturn [{\n  json: summary\n}];"
+      },
+      "id": "consolidate-findings",
+      "name": "Consolidate Findings",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2000, 600]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.REVIEW_API_BASE}}/v1/artifacts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "job_id",
+              "value": "={{$json.job_id}}"
+            },
+            {
+              "name": "summary",
+              "value": "={{JSON.stringify($json)}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "persist-artifacts",
+      "name": "Persist Artifacts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2220, 600],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "3",
+          "name": "Review API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{$env.REVIEW_API_BASE}}/v1/jobs/={{$json.job_id}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "completed"
+            },
+            {
+              "name": "completed_at",
+              "value": "={{new Date().toISOString()}}"
+            },
+            {
+              "name": "artifact_url",
+              "value": "={{$json.artifact_url}}"
+            }
+          ]
+        }
+      },
+      "id": "update-job-db",
+      "name": "Update Job DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2440, 600],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "3",
+          "name": "Review API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Generate Slack notification\nconst crypto = require('crypto');\n\nconst item = $input.item.json;\nconst findings = item.summary || item;\n\nconst riskColor = findings.risk_score > 70 ? 'danger' : \n                  findings.risk_score > 40 ? 'warning' : 'good';\n\nconst staticSummary = findings.findings?.static || {};\nconst highCount = staticSummary.by_severity?.high || 0;\nconst mediumCount = staticSummary.by_severity?.medium || 0;\nconst lowCount = staticSummary.by_severity?.low || 0;\n\nconst message = {\n  text: `NonStop Code Review Completed`,\n  attachments: [\n    {\n      color: riskColor,\n      title: `Job: ${findings.job_id}`,\n      fields: [\n        {\n          title: 'Files Analyzed',\n          value: findings.file_count,\n          short: true\n        },\n        {\n          title: 'Risk Score',\n          value: `${findings.risk_score}/100`,\n          short: true\n        },\n        {\n          title: 'Findings',\n          value: `🔴 ${highCount} High | 🟡 ${mediumCount} Medium | 🔵 ${lowCount} Low`,\n          short: false\n        },\n        {\n          title: 'Artifact',\n          value: `<${item.artifact_url}|View Full Report>`,\n          short: false\n        }\n      ],\n      footer: 'NonStop Agent Review',\n      ts: Math.floor(Date.now() / 1000)\n    }\n  ]\n};\n\n// Add HMAC signature for webhook\nconst signature = crypto\n  .createHmac('sha256', $env.WEBHOOK_SECRET)\n  .update(JSON.stringify(findings))\n  .digest('hex');\n\nreturn [{\n  json: {\n    slack_payload: message,\n    webhook_payload: findings,\n    webhook_signature: signature\n  }\n}];"
+      },
+      "id": "prepare-notifications",
+      "name": "Prepare Notifications",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2660, 600]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.SLACK_WEBHOOK}}",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "jsonBody": "={{JSON.stringify($json.slack_payload)}}",
+        "options": {}
+      },
+      "id": "notify-slack",
+      "name": "Notify Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2880, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$env.CUSTOMER_WEBHOOK_URL}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "check-customer-webhook",
+      "name": "Check Customer Webhook",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [2880, 700]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.CUSTOMER_WEBHOOK_URL}}",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-NonStop-Signature",
+              "value": "={{$json.webhook_signature}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "jsonBody": "={{JSON.stringify($json.webhook_payload)}}",
+        "options": {
+          "timeout": 10000,
+          "retry": {
+            "enabled": true,
+            "maxRetries": 3,
+            "retryInterval": 1000
+          }
+        }
+      },
+      "id": "notify-customer-webhook",
+      "name": "Notify Customer Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [3100, 700]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Cleanup temp files\nconst fs = require('fs');\nconst { execSync } = require('child_process');\n\nconst item = $input.item.json;\n\nif (item.temp_path) {\n  try {\n    execSync(`rm -rf ${item.temp_path}`);\n  } catch (e) {\n    console.error('Cleanup failed:', e);\n  }\n}\n\nreturn [{\n  json: {\n    job_id: item.job_id || item.webhook_payload?.job_id,\n    status: 'completed',\n    cleaned: true\n  }\n}];"
+      },
+      "id": "cleanup-temp",
+      "name": "Cleanup Temp Files",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [3100, 500]
+    }
+  ],
+  "connections": {
+    "Webhook Entry": {
+      "main": [
+        [
+          {
+            "node": "Verify Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Signature": {
+      "main": [
+        [
+          {
+            "node": "Mode Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      
