@@ -1,0 +1,9 @@
+
+fastapi==0.115.0
+uvicorn==0.30.6
+jinja2==3.1.4
+# Optional (the app runs without these, but they enable full features)
+opik>=0.3.0; python_version >= "3.9"
+openai>=1.40.0
+anthropic>=0.26.0
+python-dotenv>=1.0.1

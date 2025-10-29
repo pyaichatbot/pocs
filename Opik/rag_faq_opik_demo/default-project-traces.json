@@ -1,0 +1,94 @@
+[
+  {
+    "id": "019a31e9-1f2b-7afc-ac78-bed3216ae637",
+    "name": "generate_with_context",
+    "input": {
+      "question": "How to contact support?",
+      "context": "Email support@example.com or open a ticket via the help center."
+    },
+    "output": {
+      "output": "You can contact support in two ways:\n\n1. **Email**: support@example.com\n2. **Help Center**: Open a ticket via the help center"
+    },
+    "duration": 2640.376,
+    "comments": "",
+    "feedback_scores.User feedback": "-"
+  },
+  {
+    "id": "019a31e9-1381-71fa-b156-60215465207e",
+    "name": "generate_with_context",
+    "input": {
+      "question": "Do you support SSO?",
+      "context": "Yes, we support SAML and OpenID Connect. Contact sales for setup and pricing."
+    },
+    "output": {
+      "output": "Yes, we support SSO through both SAML and OpenID Connect. Please contact sales for setup and pricing information."
+    },
+    "duration": 2983.382,
+    "comments": "",
+    "feedback_scores.User feedback": "-"
+  },
+  {
+    "id": "019a31e9-0561-7aef-85bc-fe92275c6888",
+    "name": "generate_with_context",
+    "input": {
+      "question": "What is refund policy?",
+      "context": "We offer a 30-day refund policy on most products purchased directly from us. To request a refund, contact support with your order ID."
+    },
+    "output": {
+      "output": "Based on the information provided, the refund policy is:\n\n- **30-day refund policy** on most products purchased directly from the company\n- To request a refund, you need to **contact support with your order ID**\n\nNote that this policy applies specifically to products purchased directly from them, and covers \"most products\" (so there may be some exceptions)."
+    },
+    "duration": 3614.82,
+    "comments": "",
+    "feedback_scores.User feedback": "-"
+  },
+  {
+    "id": "019a31e9-053c-731f-9a66-490c628cebe3",
+    "name": "Guardrail",
+    "input": {
+      "generation": "I don't have information about how to cancel subscriptions in the context provided. The available information only covers how to reset a password using the \"Forgot Password\" link. You may need to check your account settings, contact customer support, or look for subscription management options in your account dashboard."
+    },
+    "output": "",
+    "duration": 16.061,
+    "comments": "",
+    "feedback_scores.User feedback": "-"
+  },
+  {
+    "id": "019a31e8-f629-7305-8922-78cea029679f",
+    "name": "generate_with_context",
+    "input": {
+      "question": "How do I cancel my subscription?",
+      "context": "Use the \"Forgot Password\" link on the sign-in page. You'll receive an email with reset instructions."
+    },
+    "output": {
+      "output": "I don't have information about how to cancel subscriptions in the context provided. The available information only covers how to reset a password using the \"Forgot Password\" link. You may need to check your account settings, contact customer support, or look for subscription management options in your account dashboard."
+    },
+    "duration": 3857.345,
+    "comments": "",
+    "feedback_scores.User feedback": "-"
+  },
+  {
+    "id": "019a31e8-f53c-7be0-9de5-27a0299b7c75",
+    "name": "Guardrail",
+    "input": {
+      "generation": "Based on the information provided, here is the refund policy:\n\n- **30-day refund period** on most products purchased directly from the company\n- To request a refund, you need to **contact support** and provide your **order ID**\n\nNote that this policy applies specifically to products purchased directly from the company, and covers \"most products\" (though the context doesn't specify which products might be excluded)."
+    },
+    "output": "",
+    "duration": 128.798,
+    "comments": "",
+    "feedback_scores.User feedback": "-"
+  },
+  {
+    "id": "019a31e8-dd44-747c-98de-1e5eb146ef42",
+    "name": "generate_with_context",
+    "input": {
+      "question": "What is refund policy?",
+      "context": "We offer a 30-day refund policy on most products purchased directly from us. To request a refund, contact support with your order ID."
+    },
+    "output": {
+      "output": "Based on the information provided, here is the refund policy:\n\n- **30-day refund period** on most products purchased directly from the company\n- To request a refund, you need to **contact support** and provide your **order ID**\n\nNote that this policy applies specifically to products purchased directly from the company, and covers \"most products\" (though the context doesn't specify which products might be excluded)."
+    },
+    "duration": 6113.529,
+    "comments": "",
+    "feedback_scores.User feedback": "-"
+  }
+]

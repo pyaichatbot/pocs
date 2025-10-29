@@ -1,0 +1,14 @@
+[
+  {
+    "question": "What is refund policy?",
+    "expected": "30-day refund policy"
+  },
+  {
+    "question": "Do you support SSO?",
+    "expected": "We support SAML and OpenID Connect."
+  },
+  {
+    "question": "How to contact support?",
+    "expected": "Email support@example.com or open a ticket."
+  }
+]

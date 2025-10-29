@@ -1,0 +1,20 @@
+services:
+  rag-service:
+    build: .
+    env_file:
+      - .env
+    environment:
+      - OPIK_URL_OVERRIDE=http://opik-frontend-1:5173/api/
+      # - OPIK_API_KEY=...  # if your self-hosted Opik requires auth
+      # - OPIK_API_KEY=...  # if your self-hosted Opik requires auth
+      - USE_OPIK=1
+      - OPIK_USE_LOCAL=0
+    ports:
+      - "8000:8000"
+    networks:
+      - opik_default   # ensure this matches the network created by opik.sh
+    restart: unless-stopped
+
+networks:
+  opik_default:
+    external: true
