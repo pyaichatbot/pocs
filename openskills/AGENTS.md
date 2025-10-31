@@ -39,6 +39,12 @@ Usage notes:
 </skill>
 
 <skill>
+<name>brainstorming</name>
+<description>Use when creating or developing, before writing code or implementation plans - refines rough ideas into fully-formed designs through collaborative questioning, alternative exploration, and incremental validation. Don't use during clear 'mechanical' processes</description>
+<location>project</location>
+</skill>
+
+<skill>
 <name>brand-guidelines</name>
 <description>Applies Anthropic's official brand colors and typography to any sort of artifact that may benefit from having Anthropic's look-and-feel. Use it when brand colors or style guidelines, visual formatting, or company design standards apply.</description>
 <location>project</location>
@@ -53,6 +59,12 @@ Usage notes:
 <skill>
 <name>docx</name>
 <description>"Comprehensive document creation, editing, and analysis with support for tracked changes, comments, formatting preservation, and text extraction. When Claude needs to work with professional documents (.docx files) for: (1) Creating new documents, (2) Modifying or editing content, (3) Working with tracked changes, (4) Adding comments, or any other document tasks"</description>
+<location>project</location>
+</skill>
+
+<skill>
+<name>executing-plans</name>
+<description>Use when partner provides a complete implementation plan to execute in controlled batches with review checkpoints - loads plan, reviews critically, executes tasks in batches, reports for review between batches</description>
 <location>project</location>
 </skill>
 
@@ -101,6 +113,12 @@ Usage notes:
 <skill>
 <name>template-skill</name>
 <description>Replace with description of the skill and when Claude should use it.</description>
+<location>project</location>
+</skill>
+
+<skill>
+<name>test-driven-development</name>
+<description>Use when implementing any feature or bugfix, before writing implementation code - write the test first, watch it fail, write minimal code to pass; ensures tests actually verify behavior by requiring failure first</description>
 <location>project</location>
 </skill>
 

@@ -83,7 +83,7 @@
         "options": {
           "responseCode": 202,
           "responseHeaders": {
-            "headers": [
+            "parameters": [
               {
                 "name": "Content-Type",
                 "value": "application/json"
@@ -119,9 +119,7 @@
       "parameters": {
         "operation": "list",
         "path": "/code/reviews/",
-        "options": {
-          "recursive": true
-        }
+        "recursive": true
       },
       "id": "sftp-list-files",
       "name": "SFTP List Files",
@@ -257,28 +255,14 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "job_id",
-              "value": "={{$json.job_id}}"
-            },
-            {
-              "name": "files",
-              "value": "={{JSON.stringify($json.redacted_files)}}"
-            },
-            {
-              "name": "static_findings",
-              "value": "={{JSON.stringify($json.static_findings)}}"
-            }
-          ]
-        },
+        "jsonParameters": true,
+        "bodyParametersJson": "={{ JSON.stringify({ job_id: $json.job_id, files: $json.redacted_files, static_findings: $json.static_findings }) }}",
         "options": {}
       },
       "id": "llm-review",
       "name": "LLM Review",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
+      "typeVersion": 4,
       "position": [1780, 600],
       "credentials": {
         "httpHeaderAuth": {
@@ -304,24 +288,14 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "job_id",
-              "value": "={{$json.job_id}}"
-            },
-            {
-              "name": "summary",
-              "value": "={{JSON.stringify($json)}}"
-            }
-          ]
-        },
+        "jsonParameters": true,
+        "bodyParametersJson": "={{ JSON.stringify({ job_id: $json.job_id, summary: $json }) }}",
         "options": {}
       },
       "id": "persist-artifacts",
       "name": "Persist Artifacts",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
+      "typeVersion": 4,
       "position": [2220, 600],
       "credentials": {
         "httpHeaderAuth": {
@@ -337,27 +311,13 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "status",
-              "value": "completed"
-            },
-            {
-              "name": "completed_at",
-              "value": "={{new Date().toISOString()}}"
-            },
-            {
-              "name": "artifact_url",
-              "value": "={{$json.artifact_url}}"
-            }
-          ]
-        }
+        "jsonParameters": true,
+        "bodyParametersJson": "={{ JSON.stringify({ status: 'completed', completed_at: new Date().toISOString(), artifact_url: $json.artifact_url }) }}"
       },
       "id": "update-job-db",
       "name": "Update Job DB",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
+      "typeVersion": 4,
       "position": [2440, 600],
       "credentials": {
         "httpHeaderAuth": {
@@ -381,16 +341,13 @@
         "url": "={{$env.SLACK_WEBHOOK}}",
         "method": "POST",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": []
-        },
         "jsonBody": "={{JSON.stringify($json.slack_payload)}}",
         "options": {}
       },
       "id": "notify-slack",
       "name": "Notify Slack",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
+      "typeVersion": 4,
       "position": [2880, 500]
     },
     {
@@ -441,7 +398,7 @@
       "id": "notify-customer-webhook",
       "name": "Notify Customer Webhook",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
+      "typeVersion": 4,
       "position": [3100, 700]
     },
     {
@@ -476,4 +433,7 @@
             "index": 0
           }
         ]
-      
+      ]
+    }
+  }
+}
