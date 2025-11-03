@@ -1,0 +1,132 @@
+
+services:
+  rag-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-service
+    env_file:
+      - .env
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      # Vector Database Configuration
+      - REPOSITORY_TYPE=${REPOSITORY_TYPE:-pixeltable}
+      - PIXELTABLE_CONNECTION=${PIXELTABLE_CONNECTION:-sqlite:///./.pixeltable/metadata.db}
+      - PIXELTABLE_MEDIA_DIR=${PIXELTABLE_MEDIA_DIR:-/app/data/pixeltable}
+      
+      # ChromaDB Configuration (if using REPOSITORY_TYPE=chromadb)
+      # For local persistent storage (standalone mode):
+      - CHROMADB_PATH=${CHROMADB_PATH:-/app/data/chromadb}
+      # For ChromaDB server mode (recommended for Docker):
+      # IMPORTANT: Always use port 8000 for internal Docker network connections
+      # (This is the container's internal port, not the external mapped port)
+      - CHROMADB_HOST=${CHROMADB_HOST:-chromadb}
+      - CHROMADB_PORT=8000
+      
+      # PostgreSQL/pgvector Configuration (if using REPOSITORY_TYPE=pgvector)
+      # Format: postgresql://user:password@host:port/dbname
+      - POSTGRES_CONNECTION_STRING=${POSTGRES_CONNECTION_STRING:-postgresql://${POSTGRES_USER:-raguser}:${POSTGRES_PASSWORD:-ragpass}@postgres:5432/${POSTGRES_DB:-ragdb}}
+      
+      # Cosmos DB Configuration (if using)
+      - COSMOS_ENDPOINT=${COSMOS_ENDPOINT:-}
+      - COSMOS_KEY=${COSMOS_KEY:-}
+      
+      # Embedding Configuration
+      - EMBEDDING_MODEL_ID=${EMBEDDING_MODEL_ID:-intfloat/e5-small-v2}
+      
+      # Search Configuration
+      - MAX_CHUNKS=${MAX_CHUNKS:-5}
+      - CHUNK_MAX_WORDS=${CHUNK_MAX_WORDS:-300}
+      - CHUNK_OVERLAP_WORDS=${CHUNK_OVERLAP_WORDS:-50}
+      
+      # Parallel Processing
+      - MAX_WORKERS=${MAX_WORKERS:-4}
+      - BATCH_SIZE=${BATCH_SIZE:-100}
+      
+      # Reranking Configuration
+      - RERANKER_ENABLED=${RERANKER_ENABLED:-false}
+      - RERANKER_MODEL_ID=${RERANKER_MODEL_ID:-cross-encoder/ms-marco-MiniLM-L-6-v2}
+      
+      # LLM Provider Configuration
+      - LLM_PROVIDER=${LLM_PROVIDER:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+      - AZURE_OPENAI_DEPLOYMENT_NAME=${AZURE_OPENAI_DEPLOYMENT_NAME:-}
+    volumes:
+      - rag-data:/app/data
+      - ./test_data:/app/test_data:ro  # Mount test data for local testing (read-only)
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - rag-network
+
+  # ChromaDB Server (use profile 'chromadb' to enable)
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: rag-chromadb
+    env_file:
+      - .env
+    ports:
+      - "${CHROMADB_EXTERNAL_PORT:-8001}:8000"  # External port 8001, internal port 8000
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+      - CHROMA_SERVER_AUTHN_PROVIDER=${CHROMA_SERVER_AUTHN_PROVIDER:-chromadb.auth.token_authn.TokenAuthenticationServerProvider}
+      - CHROMA_SERVER_AUTHN_CREDENTIALS=${CHROMA_SERVER_AUTHN_CREDENTIALS:-}
+    volumes:
+      - chromadb-data:/chroma/chroma
+    restart: unless-stopped
+    networks:
+      - rag-network
+    
+    profiles:
+      - chromadb
+
+  # Optional: PostgreSQL with pgvector extension (uncomment if using pgvector)
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: rag-postgres
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-raguser}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-ragpass}
+      - POSTGRES_DB=${POSTGRES_DB:-ragdb}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-raguser}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - pgvector
+
+volumes:
+  rag-data:
+    driver: local
+  chromadb-data:
+    driver: local
+  postgres-data:
+    driver: local
+
+networks:
+  rag-network:
+    driver: bridge
+

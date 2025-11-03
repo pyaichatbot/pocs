@@ -1,0 +1,25 @@
+# Core dependencies
+fastapi>=0.104.0,<1.0.0
+pydantic>=2.0.0,<3.0.0
+uvicorn[standard]>=0.24.0,<1.0.0
+
+# Vector database (Pixeltable)
+pixeltable>=0.4.0
+sentence-transformers>=2.2.0
+
+# LLM clients (optional - install as needed)
+# Azure OpenAI
+openai>=1.0.0
+
+# Anthropic
+anthropic>=0.7.0
+
+# Utilities
+python-multipart>=0.0.6  # For FastAPI file uploads
+
+# Vector database support
+chromadb>=0.4.0  # For ChromaDB support
+psycopg[binary]>=3.1.0  # PostgreSQL driver for pgvector
+pgvector>=0.4.0  # pgvector extension support
+azure-cosmos>=4.5.0  # For Cosmos DB support
+

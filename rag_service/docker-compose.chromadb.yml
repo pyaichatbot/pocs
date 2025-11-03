@@ -1,0 +1,18 @@
+# Docker Compose override for ChromaDB setup
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.chromadb.yml up -d
+
+services:
+  rag-service:
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    environment:
+      - REPOSITORY_TYPE=chromadb
+      - CHROMADB_HOST=chromadb
+      - CHROMADB_PORT=8000  # Internal port (ChromaDB container listens on 8000)
+      # Note: External port is 8001 to avoid conflict with rag-service
+      # Uncomment for local persistent storage instead of server mode:
+      # - CHROMADB_PATH=/app/data/chromadb
+      # - CHROMADB_HOST=
+      # - CHROMADB_PORT=
+

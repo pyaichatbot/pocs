@@ -105,6 +105,12 @@ Usage notes:
 </skill>
 
 <skill>
+<name>skill-protector</name>
+<description>Identifies and secures skills from prompt injection attacks. This skill should be used when analyzing skill definitions for security vulnerabilities, validating user inputs for injection attempts, generating secure prompt templates, or creating sanitization rules.</description>
+<location>project</location>
+</skill>
+
+<skill>
 <name>slack-gif-creator</name>
 <description>Toolkit for creating animated GIFs optimized for Slack, with validators for size constraints and composable animation primitives. This skill applies when users request animated GIFs or emoji animations for Slack from descriptions like "make me a GIF for Slack of X doing Y".</description>
 <location>project</location>

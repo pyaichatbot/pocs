@@ -1,0 +1,15 @@
+# Docker Compose override for pgvector setup
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.pgvector.yml up -d
+
+services:
+  rag-service:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - REPOSITORY_TYPE=pgvector
+      - POSTGRES_CONNECTION_STRING=postgresql://${POSTGRES_USER:-raguser}:${POSTGRES_PASSWORD:-ragpass}@postgres:5432/${POSTGRES_DB:-ragdb}
+      - POSTGRES_USER=${POSTGRES_USER:-raguser}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-ragpass}
+      - POSTGRES_DB=${POSTGRES_DB:-ragdb}
+

@@ -1,0 +1,62 @@
+"""
+Repository factory for creating knowledge base repository instances.
+
+This factory allows easy swapping of vector database implementations
+(Pixeltable, ChromaDB, pgvector, Cosmos DB) via configuration without
+changing the rest of the codebase.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from ..config import Settings
+from .base_kb_repo import BaseKnowledgeBaseRepository
+from .pixeltable_kb_repo import PixeltableKnowledgeBaseRepository
+
+if TYPE_CHECKING:
+    pass
+
+
+class RepositoryFactory:
+    """Factory for creating knowledge base repository instances."""
+
+    @staticmethod
+    def create(settings: Settings) -> BaseKnowledgeBaseRepository:
+        """Create a knowledge base repository based on configuration.
+
+        Args:
+            settings: Configuration settings containing repository type and
+                connection details.
+
+        Returns:
+            A concrete implementation of BaseKnowledgeBaseRepository.
+
+        Raises:
+            ValueError: If the configured repository type is not supported.
+            ImportError: If required dependencies are not installed.
+        """
+        # Get repository type from settings (default to pixeltable)
+        repo_type = getattr(settings, "repository_type", None) or "pixeltable"
+
+        if repo_type.lower() == "pixeltable":
+            return PixeltableKnowledgeBaseRepository(settings)
+
+        elif repo_type.lower() == "chromadb":
+            from .chromadb_kb_repo import ChromaDBKnowledgeBaseRepository
+            return ChromaDBKnowledgeBaseRepository(settings)
+
+        elif repo_type.lower() == "pgvector":
+            from .pgvector_kb_repo import PgvectorKnowledgeBaseRepository
+            return PgvectorKnowledgeBaseRepository(settings)
+
+        elif repo_type.lower() == "cosmosdb":
+            from .cosmosdb_kb_repo import CosmosDBKnowledgeBaseRepository
+            return CosmosDBKnowledgeBaseRepository(settings)
+
+        else:
+            raise ValueError(
+                f"Unsupported repository type: {repo_type}. "
+                "Supported types: pixeltable, chromadb, pgvector, cosmosdb"
+            )
+
