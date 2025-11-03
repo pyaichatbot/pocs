@@ -40,6 +40,7 @@ COPY __init__.py api.py config.py llm_client.py ./rag_service/
 COPY repositories/ ./rag_service/repositories/
 COPY services/ ./rag_service/services/
 COPY utils/ ./rag_service/utils/
+COPY static/ ./rag_service/static/
 COPY main.py ./
 
 # Create non-root user for security

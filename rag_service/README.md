@@ -1,16 +1,19 @@
 # RAG Service
 
-A production-ready Retrieval-Augmented Generation (RAG) service for indexing GitLab repositories and enabling conversational search over markdown documentation.
+A production-ready Retrieval-Augmented Generation (RAG) service for indexing GitLab repositories and local folders, enabling conversational search over markdown and PDF documentation.
 
 ## Features
 
-- **GitLab Integration**: Index markdown files from GitLab repositories
+- **Multi-Format Support**: Index both markdown (.md, .markdown) and PDF (.pdf) files
+- **GitLab Integration**: Index documents from GitLab repositories
+- **Local Folder Indexing**: Index documents from local directories
 - **Delta Indexing**: Incremental updates for efficient indexing
 - **Vector Search**: Semantic similarity search using embeddings
 - **Hybrid Search**: Combines semantic and keyword search for better results
 - **LLM Integration**: Supports Azure OpenAI and Anthropic for generating answers
-- **Multiple Vector DB Support**: Currently supports Pixeltable, with easy migration path to ChromaDB, pgvector, or Cosmos DB
+- **Multiple Vector DB Support**: ChromaDB (default), pgvector, and Cosmos DB
 - **REST API**: FastAPI-based API with OpenAPI documentation
+- **Chatbot Interface**: Interactive HTML chatbot for querying the knowledge base
 
 ## Architecture
 
@@ -23,15 +26,21 @@ rag_service/
 ├── llm_client.py       # LLM provider abstractions
 ├── repositories/       # Vector database implementations
 │   ├── base_kb_repo.py        # Abstract repository interface
-│   ├── pixeltable_kb_repo.py  # Pixeltable implementation
+│   ├── chromadb_kb_repo.py    # ChromaDB implementation
+│   ├── pgvector_kb_repo.py     # pgvector implementation
+│   ├── cosmosdb_kb_repo.py    # Cosmos DB implementation
 │   └── factory.py             # Repository factory
 ├── services/           # Business logic
-│   ├── ingestion_service.py   # GitLab indexing
+│   ├── ingestion_service.py   # Document indexing (GitLab & local)
 │   └── search_service.py      # Query processing
+├── static/             # Static files
+│   └── chatbot.html    # Interactive chatbot interface
 └── utils/              # Utilities
     ├── gitlab_loader.py       # GitLab integration
-    ├── md_parser.py           # Markdown parsing
-    └── logging.py             # Structured logging
+    ├── document_loader.py    # Multi-format document loading
+    ├── md_parser.py          # Markdown parsing
+    ├── pdf_parser.py         # PDF parsing (using pdfplumber)
+    └── logging.py            # Structured logging
 ```
 
 ## Installation
@@ -40,7 +49,6 @@ rag_service/
 
 - Python 3.10+
 - Git (for cloning GitLab repositories)
-- Pixeltable (installed via requirements.txt)
 
 ### Setup
 
@@ -57,10 +65,11 @@ rag_service/
    pip install -r requirements.txt
    ```
 
-4. **Install Pixeltable dependencies**:
-   ```bash
-   pip install pixeltable sentence-transformers
-   ```
+   This installs all required dependencies including:
+   - FastAPI and web server components
+   - pdfplumber for PDF text extraction (license-safe alternative to pymupdf)
+   - sentence-transformers for embeddings
+   - ChromaDB, pgvector, or Cosmos DB drivers (depending on your choice)
 
 ## Configuration
 
@@ -68,15 +77,13 @@ Configuration is managed via environment variables:
 
 ### Required Settings
 
-- **PIXELTABLE_CONNECTION**: Connection string for Pixeltable
-  - Default: `sqlite:///./.pixeltable/metadata.db`
-  - For PostgreSQL: `postgresql://user:password@host:port/dbname`
+None - the service works out of the box with ChromaDB defaults.
 
 ### Optional Settings
 
 #### Vector Database
-- `REPOSITORY_TYPE`: Repository type (`pixeltable`, `chromadb`, `pgvector`, `cosmosdb`)
-  - Default: `pixeltable`
+- `REPOSITORY_TYPE`: Repository type (`chromadb`, `pgvector`, `cosmosdb`)
+  - Default: `chromadb`
 - `EMBEDDING_MODEL_ID`: Embedding model identifier
   - Default: `intfloat/e5-small-v2`
   - Options: `all-MiniLM-L6-v2`, `intfloat/e5-large-v2`, etc.
@@ -104,9 +111,8 @@ Configuration is managed via environment variables:
 Create a `.env` file:
 
 ```bash
-# Vector Database
-PIXELTABLE_CONNECTION=sqlite:///./.pixeltable/metadata.db
-REPOSITORY_TYPE=pixeltable
+# Vector Database (ChromaDB is default, no config needed)
+REPOSITORY_TYPE=chromadb
 EMBEDDING_MODEL_ID=intfloat/e5-small-v2
 
 # Search
@@ -143,7 +149,7 @@ python -m rag_service.main
 
 The service uses parallel processing to improve indexing performance:
 
-- **File Processing**: Multiple markdown files are processed simultaneously
+- **File Processing**: Multiple files (markdown and PDF) are processed simultaneously
   using `ThreadPoolExecutor` (configurable via `MAX_WORKERS`, default: 4)
 - **Batch Upserts**: Documents are upserted in batches to avoid overwhelming
   the database (configurable via `BATCH_SIZE`, default: 100)
@@ -164,6 +170,7 @@ uvicorn rag_service.api:app --host 0.0.0.0 --port 8000 --workers 4
 
 The service will be available at:
 - API: `http://localhost:8000`
+- Chatbot Interface: `http://localhost:8000/` or `http://localhost:8000/chatbot`
 - Interactive Docs: `http://localhost:8000/docs`
 - Health Check: `http://localhost:8000/health`
 
@@ -208,12 +215,12 @@ Perform an incremental index, updating only modified files.
 
 ### `POST /index-local`
 
-Index markdown files from a local folder path.
+Index markdown and PDF files from a local folder path.
 
 **Request Body**:
 ```json
 {
-  "folder_path": "/path/to/markdown/folder"
+  "folder_path": "/path/to/documents/folder"
 }
 ```
 
@@ -224,6 +231,8 @@ Index markdown files from a local folder path.
   "chunks_indexed": 42
 }
 ```
+
+**Note**: The endpoint recursively scans for `.md`, `.markdown`, and `.pdf` files. PDF files are parsed using pdfplumber to extract text content.
 
 ### `POST /search`
 
@@ -253,6 +262,12 @@ Query the knowledge base and get an answer.
 }
 ```
 
+### `GET /` or `GET /chatbot`
+
+Serve the interactive chatbot HTML interface for querying the knowledge base.
+
+**Response**: HTML page with chatbot interface
+
 ### `GET /health`
 
 Health check endpoint.
@@ -261,8 +276,8 @@ Health check endpoint.
 ```json
 {
   "status": "healthy",
-  "service": "markdown-rag",
-  "repository_type": "pixeltable"
+  "service": "rag-service",
+  "repository_type": "chromadb"
 }
 ```
 
@@ -294,7 +309,7 @@ curl -X POST "http://localhost:8000/search" \
 
 ### Test Local Folder Indexing
 
-Index markdown files from the local test data folder:
+Index markdown and PDF files from the local test data folder:
 
 ```bash
 curl -X POST "http://localhost:8000/index-local" \
@@ -305,10 +320,12 @@ curl -X POST "http://localhost:8000/index-local" \
 **Expected Response**:
 ```json
 {
-    "files_indexed": 14,
-    "chunks_indexed": 14
+    "files_indexed": 18,
+    "chunks_indexed": 18
 }
 ```
+
+**Note:** This includes both markdown files (14) and PDF files (4) from the test data directory.
 
 ### Test Search Query
 
@@ -401,8 +418,7 @@ The service uses abstraction patterns, making it easy to swap both vector databa
 The repository factory (`repositories/factory.py`) supports multiple vector databases:
 
 **Supported Implementations**:
-- **Pixeltable** (default): `REPOSITORY_TYPE=pixeltable`
-- **ChromaDB**: `REPOSITORY_TYPE=chromadb`
+- **ChromaDB** (default): `REPOSITORY_TYPE=chromadb`
 - **pgvector**: `REPOSITORY_TYPE=pgvector`
 - **Cosmos DB**: `REPOSITORY_TYPE=cosmosdb`
 
@@ -475,7 +491,7 @@ QUANTIZATION_ENABLED=true
 
 2. **Start services:**
 
-   **Option A: Pixeltable (default, no additional services):**
+   **Option A: ChromaDB (default, no additional services):**
    ```bash
    docker-compose up -d
    ```
@@ -518,7 +534,7 @@ QUANTIZATION_ENABLED=true
    docker run -d \
      --name rag-service \
      -p 8000:8000 \
-     -e REPOSITORY_TYPE=pixeltable \
+     -e REPOSITORY_TYPE=chromadb \
      -e ANTHROPIC_API_KEY=your-key \
      -v rag-data:/app/data \
      rag-service:latest
@@ -665,11 +681,18 @@ mypy rag_service/
 
 ## Troubleshooting
 
-### Pixeltable Connection Issues
+### PDF Processing Issues
 
-- Ensure the connection string is correct
-- For SQLite, ensure the directory exists
-- For PostgreSQL, ensure the database exists and is accessible
+- Ensure pdfplumber is installed: `pip install pdfplumber`
+- For complex PDFs, some text extraction may fail - check logs for details
+- PDFs with images or scanned content may require OCR (not currently supported)
+- **For scanned PDFs with tables/images**: See [OCR_IMPLEMENTATION_GUIDE.md](OCR_IMPLEMENTATION_GUIDE.md) for adding OCR support using open-source solutions like PaddleOCR, Tesseract, or OCRmyPDF
+
+### Vector Database Connection Issues
+
+- **ChromaDB**: Ensure the storage path is writable
+- **pgvector**: Ensure PostgreSQL has the vector extension installed and connection string is correct
+- **Cosmos DB**: Verify endpoint URL and access key
 
 ### GitLab Clone Failures
 

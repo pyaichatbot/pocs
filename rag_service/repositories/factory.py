@@ -2,8 +2,8 @@
 Repository factory for creating knowledge base repository instances.
 
 This factory allows easy swapping of vector database implementations
-(Pixeltable, ChromaDB, pgvector, Cosmos DB) via configuration without
-changing the rest of the codebase.
+(ChromaDB, pgvector, Cosmos DB) via configuration without changing
+the rest of the codebase.
 """
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 
 from ..config import Settings
 from .base_kb_repo import BaseKnowledgeBaseRepository
-from .pixeltable_kb_repo import PixeltableKnowledgeBaseRepository
 
 if TYPE_CHECKING:
     pass
@@ -36,13 +35,10 @@ class RepositoryFactory:
             ValueError: If the configured repository type is not supported.
             ImportError: If required dependencies are not installed.
         """
-        # Get repository type from settings (default to pixeltable)
-        repo_type = getattr(settings, "repository_type", None) or "pixeltable"
+        # Get repository type from settings (default to chromadb)
+        repo_type = getattr(settings, "repository_type", None) or "chromadb"
 
-        if repo_type.lower() == "pixeltable":
-            return PixeltableKnowledgeBaseRepository(settings)
-
-        elif repo_type.lower() == "chromadb":
+        if repo_type.lower() == "chromadb":
             from .chromadb_kb_repo import ChromaDBKnowledgeBaseRepository
             return ChromaDBKnowledgeBaseRepository(settings)
 
@@ -57,6 +53,6 @@ class RepositoryFactory:
         else:
             raise ValueError(
                 f"Unsupported repository type: {repo_type}. "
-                "Supported types: pixeltable, chromadb, pgvector, cosmosdb"
+                "Supported types: chromadb, pgvector, cosmosdb"
             )
 

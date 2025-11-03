@@ -30,7 +30,10 @@ from typing import Any, Dict, List, Tuple
 
 from ..repositories.base_kb_repo import BaseKnowledgeBaseRepository
 from ..utils.gitlab_loader import GitLabError, clone_repo, extract_markdown_files
-from ..utils.md_parser import load_markdown_recursive, read_file, split_markdown
+from ..utils.document_loader import (
+    load_documents_recursive,
+    split_document_text,
+)
 from ..utils.logging import get_logger, log_event
 from ..config import Settings
 
@@ -61,7 +64,10 @@ class IngestionService:
     def _process_single_file(
         self, rel_path: str, content: str
     ) -> List[Dict[str, Any]]:
-        """Process a single markdown file into chunks.
+        """Process a single document file (markdown or PDF) into chunks.
+
+        Automatically determines the chunking strategy based on file extension.
+        Supports both markdown and PDF files.
 
         Args:
             rel_path: Relative path of the file.
@@ -71,8 +77,9 @@ class IngestionService:
         """
         doc_id = rel_path
         file_hash = self._hash_text(content)
-        chunks = split_markdown(
+        chunks = split_document_text(
             content,
+            file_path=rel_path,
             max_words=self.chunk_max_words,
             overlap=self.chunk_overlap_words,
         )
@@ -266,8 +273,9 @@ class IngestionService:
                     rel_path,
                     (
                         self._hash_text(content),
-                        split_markdown(
+                        split_document_text(
                             content,
+                            file_path=rel_path,
                             max_words=self.chunk_max_words,
                             overlap=self.chunk_overlap_words,
                         ),
@@ -299,8 +307,9 @@ class IngestionService:
                 for rel_path, content in files:
                     incoming[rel_path] = (
                         self._hash_text(content),
-                        split_markdown(
+                        split_document_text(
                             content,
+                            file_path=rel_path,
                             max_words=self.chunk_max_words,
                             overlap=self.chunk_overlap_words,
                         ),
@@ -461,31 +470,12 @@ class IngestionService:
         # Get absolute path for consistent relative paths
         abs_folder_path = os.path.abspath(folder_path)
 
-        # Extract markdown files recursively
-        md_paths = load_markdown_recursive(abs_folder_path)
-        if not md_paths:
-            log_event(self.logger, "local_index_no_files", folder=folder_path)
-            return {"files_indexed": 0, "chunks_indexed": 0}
-
-        # Read file contents
-        files: List[Tuple[str, str]] = []
-        for md_path in md_paths:
-            try:
-                # Get relative path from the folder root
-                rel_path = os.path.relpath(md_path, abs_folder_path)
-                content = read_file(md_path)
-                files.append((rel_path, content))
-            except Exception as exc:
-                log_event(
-                    self.logger,
-                    "local_index_file_error",
-                    file=md_path,
-                    error=str(exc),
-                )
-                # Continue with other files even if one fails
-
+        # Extract markdown and PDF files recursively
+        files = load_documents_recursive(
+            abs_folder_path, include_markdown=True, include_pdf=True
+        )
         if not files:
-            log_event(self.logger, "local_index_no_valid_files", folder=folder_path)
+            log_event(self.logger, "local_index_no_files", folder=folder_path)
             return {"files_indexed": 0, "chunks_indexed": 0}
 
         log_event(

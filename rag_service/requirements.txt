@@ -3,9 +3,9 @@ fastapi>=0.104.0,<1.0.0
 pydantic>=2.0.0,<3.0.0
 uvicorn[standard]>=0.24.0,<1.0.0
 
-# Vector database (Pixeltable)
-pixeltable>=0.4.0
-sentence-transformers>=2.2.0
+# Document processing
+pdfplumber>=0.10.0  # PDF text extraction (license-safe alternative to pymupdf)
+sentence-transformers>=2.2.0  # Embedding models
 
 # LLM clients (optional - install as needed)
 # Azure OpenAI

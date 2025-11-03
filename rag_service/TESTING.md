@@ -1,13 +1,28 @@
 # Testing Guide
 
-This guide explains how to test the RAG service with local markdown files.
+This guide explains how to test the RAG service with local markdown and PDF files.
 
 ## Test Data
 
-Test markdown files are located in `test_data/docs/`. The folder contains:
-- **14 markdown files** across multiple subdirectories
+Test files are located in `test_data/docs/`. The folder contains:
+- **14 markdown files** (.md, .markdown) across multiple subdirectories
+- **4 PDF files** (.pdf) with meaningful technical content
 - Files with ~100 lines of content each
-- Topics include: Machine Learning, Web Development, Cloud Computing, Databases, Testing, APIs, Git, and Containers
+- Topics include: Machine Learning, Web Development, Cloud Computing, Databases, Testing, APIs, Git, Containers, Python Programming, Docker, and Microservices
+
+### Creating Test PDFs
+
+To generate test PDF files, run:
+```bash
+cd rag_service
+python test_data/create_test_pdfs.py
+```
+
+This will create PDF files in `test_data/docs/` with content about:
+- Python Programming
+- Docker Containerization
+- Microservices Architecture
+- API Design Best Practices
 
 ## Running the Service
 
@@ -23,6 +38,7 @@ python -m rag_service.main
 
 The service will be available at:
 - API: `http://localhost:8000`
+- Chatbot Interface: `http://localhost:8000/` or `http://localhost:8000/chatbot`
 - Interactive Docs: `http://localhost:8000/docs`
 - Health Check: `http://localhost:8000/health`
 
@@ -55,10 +71,12 @@ print(response.json())
 **Response:**
 ```json
 {
-  "files_indexed": 14,
-  "chunks_indexed": 42
+  "files_indexed": 18,
+  "chunks_indexed": 18
 }
 ```
+
+**Note:** The response includes both markdown (14 files) and PDF (4 files) documents. PDF files are parsed using pdfplumber to extract text content.
 
 ### 2. Test Search Without LLM
 
@@ -109,6 +127,23 @@ curl -X POST "http://localhost:8000/search" \
   "answer": "There are three main types of machine learning:\n\n1. Supervised Learning...\n2. Unsupervised Learning...\n3. Reinforcement Learning..."
 }
 ```
+
+### 4. Test PDF Content Search
+
+**Test queries that should find PDF content:**
+```bash
+# Search for Python programming content (from PDF)
+curl -X POST "http://localhost:8000/search" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is Python programming language"}'
+
+# Search for Docker content (from PDF)
+curl -X POST "http://localhost:8000/search" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Docker containerization benefits"}'
+```
+
+**Expected:** These queries should return content extracted from the PDF files.
 
 ## Testing Parallel Processing
 
@@ -168,10 +203,12 @@ export MAX_WORKERS=1
 ## Expected Behavior
 
 ### Indexing
-- Should process all 14 files in parallel (if MAX_WORKERS > 1)
-- Should create chunks from each file
+- Should process all 18 files (14 markdown + 4 PDFs) in parallel (if MAX_WORKERS > 1)
+- Should extract text from PDF files using pdfplumber
+- Should create chunks from each file (markdown and PDF)
 - Should upsert documents in batches
 - Should log progress events
+- Should handle PDF parsing errors gracefully (logs warnings but continues)
 
 ### Search (Without LLM)
 - Returns raw context chunks matching the query
@@ -187,8 +224,9 @@ export MAX_WORKERS=1
 
 ### No files found
 - Check folder path is correct (use absolute path if relative doesn't work)
-- Verify files have `.md` or `.markdown` extension
+- Verify files have `.md`, `.markdown`, or `.pdf` extension
 - Check folder permissions
+- For PDFs: Ensure pdfplumber is installed (`pip install pdfplumber`)
 
 ### Search returns empty results
 - Ensure indexing completed successfully
@@ -199,4 +237,10 @@ export MAX_WORKERS=1
 - Check API key is set correctly
 - Verify provider is set: `LLM_PROVIDER=anthropic` or `azure`
 - Check API credentials and endpoints
+
+### PDF processing issues
+- Ensure pdfplumber is installed: `pip install pdfplumber`
+- Check logs for PDF parsing errors
+- Some PDFs with images or scanned content may not extract text properly
+- Verify PDF files are not corrupted
 

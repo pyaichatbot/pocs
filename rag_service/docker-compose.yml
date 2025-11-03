@@ -14,11 +14,9 @@ services:
       - "8000:8000"
     environment:
       # Vector Database Configuration
-      - REPOSITORY_TYPE=${REPOSITORY_TYPE:-pixeltable}
-      - PIXELTABLE_CONNECTION=${PIXELTABLE_CONNECTION:-sqlite:///./.pixeltable/metadata.db}
-      - PIXELTABLE_MEDIA_DIR=${PIXELTABLE_MEDIA_DIR:-/app/data/pixeltable}
+      - REPOSITORY_TYPE=${REPOSITORY_TYPE:-chromadb}
       
-      # ChromaDB Configuration (if using REPOSITORY_TYPE=chromadb)
+      # ChromaDB Configuration (default, if using REPOSITORY_TYPE=chromadb)
       # For local persistent storage (standalone mode):
       - CHROMADB_PATH=${CHROMADB_PATH:-/app/data/chromadb}
       # For ChromaDB server mode (recommended for Docker):

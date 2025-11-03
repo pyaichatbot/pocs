@@ -2,9 +2,9 @@
 RAG Service package initialization.
 
 This package provides a simple retrieval‑augmented generation (RAG) API
-built around Pixeltable.  The service is designed to be document type
-agnostic and supports indexing of GitLab repositories containing
-markdown files.  Additional document types can be added later
+supporting multiple vector databases (ChromaDB, pgvector, Cosmos DB).  The service is designed to be document type
+agnostic and supports indexing of GitLab repositories and local folders containing
+markdown and PDF files.  Additional document types can be added later
 without modifying the API surface by extending the ingestion logic.
 
 The implementation follows SOLID principles by separating concerns
@@ -21,7 +21,7 @@ into independent layers:
   ``/index``, ``/delta-index`` and ``/search``.
 
 The goal of this design is to make it easy to swap out the underlying
-storage (e.g. move from Pixeltable to pgvector or another vector
+storage (e.g. move from ChromaDB to pgvector or another vector
 database) and to extend the ingestion pipeline to new document
 formats.
 """

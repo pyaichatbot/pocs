@@ -10,13 +10,10 @@ purpose.
 Key settings include:
 
 **Vector Database**:
-* ``REPOSITORY_TYPE`` – vector database type ("pixeltable", "chromadb",
-  "pgvector", "cosmosdb").  Defaults to "pixeltable".
+* ``REPOSITORY_TYPE`` – vector database type ("chromadb", "pgvector",
+  "cosmosdb").  Defaults to "chromadb".
 * ``EMBEDDING_MODEL_ID`` – embedding model identifier.  Defaults to
   "intfloat/e5-small-v2".  Options: "all-MiniLM-L6-v2", "intfloat/e5-large-v2", etc.
-
-**Pixeltable** (when REPOSITORY_TYPE=pixeltable):
-* ``PIXELTABLE_CONNECTION`` – SQLAlchemy connection string.  Defaults to SQLite.
 
 **ChromaDB** (when REPOSITORY_TYPE=chromadb):
 * ``CHROMADB_PATH`` – local storage path.  Defaults to "./chroma_db".
@@ -64,20 +61,6 @@ from dataclasses import dataclass
 class Settings:
     """Configuration loaded from environment variables."""
 
-    # Pixeltable connection string
-    pixeltable_connection: str = os.environ.get(
-        "PIXELTABLE_CONNECTION",
-        "sqlite:///./.pixeltable/metadata.db",
-    )
-
-    # Directory for Pixeltable file storage.  Pixeltable stores media
-    # files in a directory separate from the metadata store.  Using
-    # ``~/.pixeltable`` by default.  Set this to a persistent
-    # location in production.
-    pixeltable_media_dir: str = os.environ.get(
-        "PIXELTABLE_MEDIA_DIR",
-        os.path.expanduser("~/.pixeltable/media"),
-    )
 
     # Large language model provider: "azure" or "anthropic".  
     # Defaults to "anthropic" if ANTHROPIC_API_KEY is set, otherwise None.
@@ -108,8 +91,8 @@ class Settings:
     chunk_max_words: int = int(os.environ.get("CHUNK_MAX_WORDS", "300"))
     chunk_overlap_words: int = int(os.environ.get("CHUNK_OVERLAP_WORDS", "50"))
 
-    # Repository type (pixeltable, chromadb, pgvector, cosmosdb)
-    repository_type: str = os.environ.get("REPOSITORY_TYPE", "pixeltable")
+    # Repository type (chromadb, pgvector, cosmosdb)
+    repository_type: str = os.environ.get("REPOSITORY_TYPE", "chromadb")
 
     # ChromaDB settings
     chromadb_path: str = os.environ.get("CHROMADB_PATH", "./chroma_db")

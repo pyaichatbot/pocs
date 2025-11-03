@@ -2,7 +2,7 @@
 Utilities for fetching files from a GitLab repository.
 
 To support indexing of a GitLab project the service needs to clone the
-repository using an access token and extract markdown files.  This
+repository using an access token and extract markdown and PDF files.  This
 module encapsulates that logic.  In the future it could be extended
 to use the GitLab REST API instead of cloning, or to handle other
 document formats.
@@ -19,7 +19,7 @@ import subprocess
 import tempfile
 from typing import Dict, List, Tuple
 
-from .md_parser import load_markdown_recursive, read_file
+from .document_loader import load_documents_recursive
 
 
 class GitLabError(Exception):
@@ -84,20 +84,18 @@ def clone_repo(
 
 
 def extract_markdown_files(repo_path: str) -> List[Tuple[str, str]]:
-    """Return a list of (relative_path, content) for markdown files in a repo.
+    """Return a list of (relative_path, content) for markdown and PDF files in a repo.
+
+    Extracts both markdown (.md, .markdown) and PDF (.pdf) files from the
+    repository. PDF files are parsed using pdfplumber to extract text content.
 
     Args:
         repo_path: Local path to the cloned repository.
     Returns:
         A list of tuples where the first element is the relative path to
-        the markdown file within the repository and the second element
-        is its text content.
+        the document file within the repository and the second element is
+        its text content.
     """
-    md_paths = load_markdown_recursive(repo_path)
-    results: List[Tuple[str, str]] = []
-    for path in md_paths:
-        # Determine relative path within repository
-        rel = os.path.relpath(path, repo_path)
-        text = read_file(path)
-        results.append((rel, text))
-    return results
+    return load_documents_recursive(
+        repo_path, include_markdown=True, include_pdf=True
+    )
