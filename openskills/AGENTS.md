@@ -69,6 +69,12 @@ Usage notes:
 </skill>
 
 <skill>
+<name>google-adk-agents-builder</name>
+<description>Guide for building autonomous AI agents using Google's Agent Development Kit (ADK) and the Agent2Agent (A2A) Protocol. This skill should be used when creating Python-based agents, multi-agent systems, workflow agents, or integrating A2A protocol for agent-to-agent communication. Use when developing agents that require tools, memory, context management, or deployment on Google Cloud.</description>
+<location>project</location>
+</skill>
+
+<skill>
 <name>internal-comms</name>
 <description>A set of resources to help me write all kinds of internal communications, using the formats that my company likes to use. Claude should use this skill whenever asked to write some sort of internal communications (status reports, leadership updates, 3P updates, company newsletters, FAQs, incident reports, project updates, etc.).</description>
 <location>project</location>
