@@ -103,7 +103,7 @@ class LLMClient:
                     engine=self.settings.azure_deployment_name,
                     messages=messages,
                     temperature=0.0,
-                    max_tokens=512,
+                    max_tokens=getattr(self.settings, "llm_max_tokens", 4096),
                 )
                 return response["choices"][0]["message"]["content"].strip()
             except Exception:
@@ -116,7 +116,7 @@ class LLMClient:
                 # Use Anthropic Messages API (v0.18+)
                 message = self.anthropic.messages.create(
                     model=self.settings.anthropic_model,
-                    max_tokens=512,
+                    max_tokens=getattr(self.settings, "llm_max_tokens", 4096),
                     temperature=0.0,
                     messages=[
                         {

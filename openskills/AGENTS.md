@@ -99,6 +99,12 @@ Usage notes:
 </skill>
 
 <skill>
+<name>pdf-processing</name>
+<description>Extract text and tables from PDF files, fill forms, merge documents. Use when working with PDF files or when the user mentions PDFs, forms, or document extraction.</description>
+<location>project</location>
+</skill>
+
+<skill>
 <name>pptx</name>
 <description>"Presentation creation, editing, and analysis. When Claude needs to work with presentations (.pptx files) for: (1) Creating new presentations, (2) Modifying or editing content, (3) Working with layouts, (4) Adding comments or speaker notes, or any other presentation tasks"</description>
 <location>project</location>

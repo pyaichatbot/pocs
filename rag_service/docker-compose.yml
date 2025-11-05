@@ -49,6 +49,12 @@ services:
       - RERANKER_ENABLED=${RERANKER_ENABLED:-false}
       - RERANKER_MODEL_ID=${RERANKER_MODEL_ID:-cross-encoder/ms-marco-MiniLM-L-6-v2}
       
+      # Web Crawler Configuration
+      - WEB_CRAWLER_ENABLED=${WEB_CRAWLER_ENABLED:-true}
+      - ALLOWED_WEB_DOMAINS=${ALLOWED_WEB_DOMAINS:-}
+      - WEB_CRAWLER_TIMEOUT=${WEB_CRAWLER_TIMEOUT:-10}
+      - WEB_CRAWLER_MAX_SIZE=${WEB_CRAWLER_MAX_SIZE:-1000000}
+      
       # LLM Provider Configuration
       - LLM_PROVIDER=${LLM_PROVIDER:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
@@ -56,6 +62,7 @@ services:
       - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
       - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
       - AZURE_OPENAI_DEPLOYMENT_NAME=${AZURE_OPENAI_DEPLOYMENT_NAME:-}
+      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-4096}
     volumes:
       - rag-data:/app/data
       - ./test_data:/app/test_data:ro  # Mount test data for local testing (read-only)

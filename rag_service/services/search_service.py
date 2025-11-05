@@ -17,12 +17,13 @@ the repository.  The number of context chunks can be tuned via
 
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from ..repositories.base_kb_repo import BaseKnowledgeBaseRepository
 from ..llm_client import DocumentChunk, LLMClient
 from ..utils.logging import get_logger, log_event
 from ..utils.reranker import Reranker
+from ..utils.web_crawler import WebCrawler
 from ..config import Settings
 
 
@@ -47,6 +48,35 @@ class SearchService:
             self.reranker = Reranker(settings) if getattr(settings, "reranker_enabled", False) else None
         else:
             self.reranker = None
+
+        # Initialize web crawler if enabled
+        self.web_crawler: Optional[WebCrawler] = None
+        if settings:
+            web_crawler_enabled = getattr(settings, "web_crawler_enabled", False)
+            log_event(
+                self.logger,
+                "web_crawler_config_check",
+                enabled=web_crawler_enabled,
+                settings_present=settings is not None,
+            )
+            if web_crawler_enabled:
+                allowed_domains = getattr(settings, "allowed_web_domains", None)
+                self.web_crawler = WebCrawler(
+                    allowed_domains=allowed_domains,
+                    timeout=getattr(settings, "web_crawler_timeout", 10),
+                    max_content_length=getattr(settings, "web_crawler_max_size", 1000000),
+                    llm_client=llm_client,  # Pass LLM client for relevance checking
+                )
+                log_event(
+                    self.logger,
+                    "web_crawler_initialized",
+                    enabled=True,
+                    allowed_domains=allowed_domains,
+                )
+            else:
+                log_event(self.logger, "web_crawler_disabled", reason="not_enabled_in_config")
+        else:
+            log_event(self.logger, "web_crawler_disabled", reason="no_settings_provided")
 
     def answer(self, query: str) -> Dict[str, object]:
         """Retrieve relevant contexts and optionally generate an answer.
@@ -84,9 +114,62 @@ class SearchService:
                     metadata=r.get("metadata", {}),
                 )
             )
+
+        # Extract and crawl URLs from query if web crawler is enabled
+        web_crawled_contexts: List[DocumentChunk] = []
+        if self.web_crawler:
+            try:
+                log_event(self.logger, "web_crawl_attempt", query=query)
+                crawled_results = self.web_crawler.extract_and_crawl(query)
+                log_event(
+                    self.logger,
+                    "web_crawl_extraction_complete",
+                    urls_found=len(crawled_results),
+                    results_count=len(crawled_results),
+                )
+                for idx, crawled in enumerate(crawled_results):
+                    # Add crawled content as additional context
+                    web_crawled_contexts.append(
+                        DocumentChunk(
+                            doc_id=f"web_crawl_{idx}",
+                            chunk_id=f"web_crawl_{idx}_chunk",
+                            path=crawled["url"],
+                            content=crawled["content"],
+                            metadata={
+                                "source": "web_crawl",
+                                "url": crawled["url"],
+                            },
+                        )
+                    )
+                if web_crawled_contexts:
+                    log_event(
+                        self.logger,
+                        "web_crawl_success",
+                        urls_found=len(crawled_results),
+                        contexts_added=len(web_crawled_contexts),
+                    )
+                    # Combine vector DB contexts with web crawled contexts
+                    # Prioritize vector DB results, but include web crawled content
+                    contexts = contexts + web_crawled_contexts
+                else:
+                    log_event(
+                        self.logger,
+                        "web_crawl_no_results",
+                        message="No URLs were crawled successfully - check domain allowlist and logs",
+                    )
+            except Exception as exc:
+                log_event(self.logger, "web_crawl_error", error=str(exc), exc_info=True)
+                # Continue with vector DB results only if web crawl fails
+        else:
+            log_event(
+                self.logger,
+                "web_crawler_not_available",
+                message="Web crawler is None - check initialization logs at startup",
+            )
+
         if self.llm_client and self.llm_client.is_available():
             answer = self.llm_client.generate_answer(query, contexts)
-            log_event(self.logger, "search_complete", query=query, answer="generated")
+            log_event(self.logger, "search_complete", query=query, answer=answer)
             return {"answer": answer}
         else:
             # No LLM available; return contexts for caller to process

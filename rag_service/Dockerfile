@@ -1,5 +1,8 @@
 # Multi-stage Dockerfile for RAG Service
 # Build stage: Install dependencies and build packages
+# Build argument to force cache invalidation when code changes
+ARG BUILD_DATE
+ARG BUILD_VERSION
 FROM python:3.11-slim as builder
 
 WORKDIR /app
@@ -22,6 +25,12 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 # Runtime stage: Minimal production image
 FROM python:3.11-slim as runtime
 
+# Add build metadata for cache invalidation
+ARG BUILD_DATE
+ARG BUILD_VERSION
+LABEL build_date="${BUILD_DATE}" \
+      build_version="${BUILD_VERSION}"
+
 WORKDIR /app
 
 # Install only runtime dependencies
@@ -36,11 +45,13 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application code
 # Copy all files except those in .dockerignore to maintain rag_service package structure
-COPY __init__.py api.py config.py llm_client.py ./rag_service/
-COPY repositories/ ./rag_service/repositories/
+# Copy directories first to ensure any file change invalidates cache
+# Note: Docker cache is based on file checksums, so any modification will invalidate the layer
 COPY services/ ./rag_service/services/
 COPY utils/ ./rag_service/utils/
+COPY repositories/ ./rag_service/repositories/
 COPY static/ ./rag_service/static/
+COPY __init__.py api.py config.py llm_client.py ./rag_service/
 COPY main.py ./
 
 # Create non-root user for security

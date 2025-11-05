@@ -41,6 +41,13 @@ Key settings include:
 * ``BATCH_SIZE`` – batch size for document upserts.  Defaults to 100.
   Larger batches improve throughput but use more memory.
 
+**Web Crawler**:
+* ``WEB_CRAWLER_ENABLED`` – enable web crawler for URL extraction from queries.  Defaults to false.
+* ``ALLOWED_WEB_DOMAINS`` – comma-separated list of allowed domains (e.g., "docs.anthropic.com,cloud.google.com").
+  If not set or empty, all domains are blocked (whitelist-only mode). If set, only listed domains are allowed.
+* ``WEB_CRAWLER_TIMEOUT`` – request timeout in seconds.  Defaults to 10.
+* ``WEB_CRAWLER_MAX_SIZE`` – maximum content size to download in bytes.  Defaults to 1000000 (1MB).
+
 **LLM Provider**:
 * ``LLM_PROVIDER`` – provider ("azure" or "anthropic").  Defaults to "anthropic"
   if ANTHROPIC_API_KEY is set.
@@ -49,12 +56,14 @@ Key settings include:
 * ``AZURE_OPENAI_ENDPOINT`` – Azure OpenAI endpoint URL.
 * ``AZURE_OPENAI_API_KEY`` – Azure OpenAI API key.
 * ``AZURE_OPENAI_DEPLOYMENT_NAME`` – Azure OpenAI deployment name.
+* ``LLM_MAX_TOKENS`` – Maximum tokens for LLM response.  Defaults to 4096.
+  Increase for longer responses, decrease to save costs.
 """
 
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -79,6 +88,9 @@ class Settings:
     anthropic_model: str = os.environ.get(
         "ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"
     )
+
+    # LLM response configuration
+    llm_max_tokens: int = int(os.environ.get("LLM_MAX_TOKENS", "4096"))
 
     # Embedding model configuration
     embedding_model_id: str = os.environ.get(
@@ -120,6 +132,18 @@ class Settings:
     # Parallel processing configuration
     max_workers: int = int(os.environ.get("MAX_WORKERS", "4"))  # Number of parallel workers for file processing
     batch_size: int = int(os.environ.get("BATCH_SIZE", "100"))  # Batch size for document upserts
+
+    # Web crawler configuration
+    web_crawler_enabled: bool = os.environ.get("WEB_CRAWLER_ENABLED", "false").lower() == "true"
+    allowed_web_domains: list[str] = field(
+        default_factory=lambda: [
+            d.strip()
+            for d in os.environ.get("ALLOWED_WEB_DOMAINS", "").split(",")
+            if d.strip()
+        ]
+    )
+    web_crawler_timeout: int = int(os.environ.get("WEB_CRAWLER_TIMEOUT", "10"))
+    web_crawler_max_size: int = int(os.environ.get("WEB_CRAWLER_MAX_SIZE", "1000000"))
 
 
 def get_settings() -> Settings:
