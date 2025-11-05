@@ -4,7 +4,7 @@ RAG Service package initialization.
 This package provides a simple retrieval‑augmented generation (RAG) API
 supporting multiple vector databases (ChromaDB, pgvector, Cosmos DB).  The service is designed to be document type
 agnostic and supports indexing of GitLab repositories and local folders containing
-markdown and PDF files.  Additional document types can be added later
+markdown, PDF, and Word files.  Additional document types can be added later
 without modifying the API surface by extending the ingestion logic.
 
 The implementation follows SOLID principles by separating concerns

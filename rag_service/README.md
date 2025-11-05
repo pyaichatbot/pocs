@@ -1,10 +1,10 @@
 # RAG Service
 
-A production-ready Retrieval-Augmented Generation (RAG) service for indexing GitLab repositories and local folders, enabling conversational search over markdown and PDF documentation.
+A production-ready Retrieval-Augmented Generation (RAG) service for indexing GitLab repositories and local folders, enabling conversational search over markdown, PDF, and Word documentation.
 
 ## Features
 
-- **Multi-Format Support**: Index both markdown (.md, .markdown) and PDF (.pdf) files
+- **Multi-Format Support**: Index markdown (.md, .markdown), PDF (.pdf), and Word (.docx) files
 - **GitLab Integration**: Index documents from GitLab repositories
 - **Local Folder Indexing**: Index documents from local directories
 - **Delta Indexing**: Incremental updates for efficient indexing
@@ -40,6 +40,7 @@ rag_service/
     ├── document_loader.py    # Multi-format document loading
     ├── md_parser.py          # Markdown parsing
     ├── pdf_parser.py         # PDF parsing (using pdfplumber)
+    ├── word_parser.py        # Word document parsing (using python-docx)
     └── logging.py            # Structured logging
 ```
 
@@ -68,6 +69,7 @@ rag_service/
    This installs all required dependencies including:
    - FastAPI and web server components
    - pdfplumber for PDF text extraction (license-safe alternative to pymupdf)
+   - python-docx for Word document (.docx) text extraction
    - sentence-transformers for embeddings
    - ChromaDB, pgvector, or Cosmos DB drivers (depending on your choice)
 
@@ -215,7 +217,7 @@ Perform an incremental index, updating only modified files.
 
 ### `POST /index-local`
 
-Index markdown and PDF files from a local folder path.
+Index markdown, PDF, and Word files from a local folder path.
 
 **Request Body**:
 ```json
@@ -232,7 +234,7 @@ Index markdown and PDF files from a local folder path.
 }
 ```
 
-**Note**: The endpoint recursively scans for `.md`, `.markdown`, and `.pdf` files. PDF files are parsed using pdfplumber to extract text content.
+**Note**: The endpoint recursively scans for `.md`, `.markdown`, `.pdf`, and `.docx` files. PDF files are parsed using pdfplumber, Word files using python-docx to extract text content.
 
 ### `POST /search`
 

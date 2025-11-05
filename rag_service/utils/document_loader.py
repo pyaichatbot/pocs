@@ -22,6 +22,12 @@ from .pdf_parser import (
     load_pdf_recursive,
     split_pdf_text,
 )
+from .word_parser import (
+    WordParseError,
+    extract_text_from_word,
+    load_word_recursive,
+    split_word_text,
+)
 from .logging import get_logger, log_event
 
 logger = get_logger(__name__)
@@ -32,18 +38,22 @@ class DocumentLoaderError(Exception):
 
 
 def load_documents_recursive(
-    root: str, include_markdown: bool = True, include_pdf: bool = True
+    root: str,
+    include_markdown: bool = True,
+    include_pdf: bool = True,
+    include_word: bool = True,
 ) -> List[Tuple[str, str]]:
     """Return a list of (relative_path, content) tuples for supported documents.
 
-    Recursively scans the directory for markdown and PDF files, extracts
+    Recursively scans the directory for markdown, PDF, and Word files, extracts
     their content, and returns them with their relative paths. This function
-    handles both file types using the same interface.
+    handles multiple file types using the same interface.
 
     Args:
         root: Base directory to search.
         include_markdown: Whether to include markdown files (default: True).
         include_pdf: Whether to include PDF files (default: True).
+        include_word: Whether to include Word documents (default: True).
     Returns:
         A list of tuples where the first element is the relative path to
         the file within the root directory and the second element is its
@@ -110,6 +120,33 @@ def load_documents_recursive(
             )
             errors.append(f"Failed to load PDF files: {exc}")
 
+    # Load Word documents
+    if include_word:
+        try:
+            word_paths = load_word_recursive(abs_root)
+            for word_path in word_paths:
+                try:
+                    rel_path = os.path.relpath(word_path, abs_root)
+                    content = extract_text_from_word(word_path)
+                    if content:  # Only add if content was extracted
+                        documents.append((rel_path, content))
+                except WordParseError as exc:
+                    error_msg = f"Failed to parse Word document {word_path}: {exc}"
+                    errors.append(error_msg)
+                    log_event(logger, "document_load_error", file=word_path, error=str(exc))
+                except Exception as exc:
+                    error_msg = f"Unexpected error loading Word document {word_path}: {exc}"
+                    errors.append(error_msg)
+                    log_event(logger, "document_load_error", file=word_path, error=str(exc))
+        except Exception as exc:
+            log_event(
+                logger,
+                "document_load_error",
+                file_type="word",
+                error=str(exc),
+            )
+            errors.append(f"Failed to load Word documents: {exc}")
+
     # Log summary
     log_event(
         logger,
@@ -117,6 +154,7 @@ def load_documents_recursive(
         total=len(documents),
         markdown_included=include_markdown,
         pdf_included=include_pdf,
+        word_included=include_word,
         errors=len(errors),
     )
 
@@ -135,8 +173,8 @@ def split_document_text(
     """Split document text into chunks based on file type.
 
     Automatically determines the chunking strategy based on file extension.
-    For PDF files, uses PDF-specific chunking. For markdown and other text
-    files, uses markdown chunking.
+    For PDF files, uses PDF-specific chunking. For Word documents, uses Word-specific
+    chunking. For markdown and other text files, uses markdown chunking.
 
     Args:
         content: Document text content.
@@ -150,6 +188,8 @@ def split_document_text(
 
     if file_ext == ".pdf":
         return split_pdf_text(content, max_words=max_words, overlap=overlap)
+    elif file_ext == ".docx":
+        return split_word_text(content, max_words=max_words, overlap=overlap)
     else:
         # Default to markdown-style chunking for markdown and other text files
         return split_markdown(content, max_words=max_words, overlap=overlap)

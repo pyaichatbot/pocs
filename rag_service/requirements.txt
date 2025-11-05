@@ -5,6 +5,7 @@ uvicorn[standard]>=0.24.0,<1.0.0
 
 # Document processing
 pdfplumber>=0.10.0  # PDF text extraction (license-safe alternative to pymupdf)
+python-docx>=1.1.0  # Word document (.docx) text extraction
 sentence-transformers>=2.2.0  # Embedding models
 
 # LLM clients (optional - install as needed)

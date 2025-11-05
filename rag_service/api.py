@@ -6,12 +6,12 @@ The API provides several endpoints:
 * ``GET /`` or ``GET /chatbot`` – serve the chatbot HTML interface.
 * ``POST /index`` – perform a full index of a GitLab repository.  Body
   must include ``repo_url`` and ``token``, with an optional ``branch``.
-  Supports both markdown (.md, .markdown) and PDF (.pdf) files.
+  Supports markdown (.md, .markdown), PDF (.pdf), and Word (.docx) files.
 * ``POST /delta-index`` – perform a delta index, updating only
   modified files.  Same payload as ``/index``.
-* ``POST /index-local`` – index markdown and PDF files from a local folder path.
+* ``POST /index-local`` – index markdown, PDF, and Word files from a local folder path.
   Body must include ``folder_path``.  Recursively scans for ``.md``,
-  ``.markdown``, and ``.pdf`` files in subdirectories.
+  ``.markdown``, ``.pdf``, and ``.docx`` files in subdirectories.
 * ``POST /search`` – answer a natural language query using the
   knowledge base and, if configured, an LLM.  Body must include
   ``query``.
@@ -125,7 +125,7 @@ class LocalIndexRequest(BaseModel):
 def index_repo(req: IndexRequest):
     """Full index of a GitLab repository.
     
-    Indexes both markdown (.md, .markdown) and PDF (.pdf) files from the repository.
+    Indexes markdown (.md, .markdown), PDF (.pdf), and Word (.docx) files from the repository.
     """
     log_event(logger, "api_index_request", repo=req.repo_url, branch=req.branch)
     try:
@@ -170,14 +170,15 @@ def health_check():
 
 @app.post("/index-local")
 def index_local_folder(req: LocalIndexRequest):
-    """Index markdown and PDF files from a local folder path.
+    """Index markdown, PDF, and Word files from a local folder path.
 
     Recursively scans the specified folder for markdown files (`.md` or
-    `.markdown`) and PDF files (`.pdf`) and indexes them into the knowledge base.
-    Useful for testing or indexing local documentation without requiring a GitLab repository.
+    `.markdown`), PDF files (`.pdf`), and Word documents (`.docx`) and indexes
+    them into the knowledge base. Useful for testing or indexing local documentation
+    without requiring a GitLab repository.
 
     The folder path can be absolute or relative to the current working directory.
-    PDF files are parsed using pdfplumber to extract text content.
+    PDF files are parsed using pdfplumber, Word files using python-docx to extract text content.
     """
     log_event(logger, "api_local_index_request", folder=req.folder_path)
     try:

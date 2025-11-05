@@ -84,10 +84,10 @@ def clone_repo(
 
 
 def extract_markdown_files(repo_path: str) -> List[Tuple[str, str]]:
-    """Return a list of (relative_path, content) for markdown and PDF files in a repo.
+    """Return a list of (relative_path, content) for markdown, PDF, and Word files in a repo.
 
-    Extracts both markdown (.md, .markdown) and PDF (.pdf) files from the
-    repository. PDF files are parsed using pdfplumber to extract text content.
+    Extracts markdown (.md, .markdown), PDF (.pdf), and Word (.docx) files from the
+    repository. PDF files are parsed using pdfplumber, Word files using python-docx.
 
     Args:
         repo_path: Local path to the cloned repository.
@@ -97,5 +97,5 @@ def extract_markdown_files(repo_path: str) -> List[Tuple[str, str]]:
         its text content.
     """
     return load_documents_recursive(
-        repo_path, include_markdown=True, include_pdf=True
+        repo_path, include_markdown=True, include_pdf=True, include_word=True
     )

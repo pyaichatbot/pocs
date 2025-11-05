@@ -470,9 +470,9 @@ class IngestionService:
         # Get absolute path for consistent relative paths
         abs_folder_path = os.path.abspath(folder_path)
 
-        # Extract markdown and PDF files recursively
+        # Extract markdown, PDF, and Word files recursively
         files = load_documents_recursive(
-            abs_folder_path, include_markdown=True, include_pdf=True
+            abs_folder_path, include_markdown=True, include_pdf=True, include_word=True
         )
         if not files:
             log_event(self.logger, "local_index_no_files", folder=folder_path)
