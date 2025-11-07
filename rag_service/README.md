@@ -434,6 +434,35 @@ curl -X POST "http://localhost:8000/delta-index" \
 - Significantly faster than full indexing for large repositories with few changes
 - Ideal for scheduled updates or CI/CD integration
 
+### Test TOON Format Integration
+
+Test the TOON format token optimization in Docker:
+
+```bash
+# Copy test script to container
+docker cp test_toon_docker_integration.py rag-service:/app/test_toon_docker_integration.py
+
+# Run comprehensive TOON format test
+docker-compose exec -T rag-service python test_toon_docker_integration.py
+```
+
+**Expected Output**:
+- Token count comparisons for different context sizes (small, medium, large)
+- Format comparison table showing token savings
+- LLM client integration verification
+- Recommendations for best format based on context size
+
+**What It Tests**:
+- Token savings with TOON format (40-50% for large contexts)
+- Format selection (plain, json, toon, hybrid)
+- Token counting accuracy using tiktoken
+- Integration with LLM client
+
+For more details, see:
+- `TOON_DEMO_GUIDE.md` - Complete demo guide
+- `TOON_TEST_REPORT.md` - Detailed test results
+- `TOON_OFFICIAL_LIBRARY_ANALYSIS.md` - Comparison with official library
+
 ## Architecture: Vector DB and LLM Provider Agnostic
 
 The service uses abstraction patterns, making it easy to swap both vector databases and LLM providers.

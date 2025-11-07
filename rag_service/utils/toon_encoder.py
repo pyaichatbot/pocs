@@ -181,20 +181,43 @@ def encode_web_results_to_toon(
     return encode_to_toon(data, ["title", "url", "content"], name="web_results")
 
 
-def estimate_token_count(text: str, tokens_per_char: float = 0.25) -> int:
-    """Estimate token count for text.
+def estimate_token_count(text: str, model: str = "gpt-4") -> int:
+    """Count tokens using tiktoken (accurate) with fallback to estimation.
     
-    Note: This is a rough estimate. Actual token counts vary by tokenizer.
-    GPT-style tokenizers typically use ~0.25 tokens per character.
+    Uses tiktoken for accurate token counts, matching the official TOON library
+    and LLM client implementation. Falls back to character-based estimation
+    if tiktoken is unavailable.
     
     Args:
-        text: Text to estimate.
-        tokens_per_char: Tokens per character (default: 0.25 for GPT-style).
+        text: Text to count tokens for.
+        model: Model name for tokenizer (default: "gpt-4").
+                Used to select appropriate encoding. Claude models use cl100k_base.
     
     Returns:
-        Estimated token count.
+        Token count (accurate if tiktoken available, estimated otherwise).
     """
-    return int(len(text) * tokens_per_char)
+    try:
+        import tiktoken
+        
+        # Map models to tokenizers
+        if model and ("gpt-4" in model.lower() or "gpt-3.5" in model.lower()):
+            encoding = tiktoken.encoding_for_model("gpt-4")
+        elif model and ("claude" in model.lower() or "sonnet" in model.lower()):
+            # Claude uses cl100k_base (same as GPT-4)
+            encoding = tiktoken.get_encoding("cl100k_base")
+        else:
+            # Default to cl100k_base (most common)
+            encoding = tiktoken.get_encoding("cl100k_base")
+        
+        return len(encoding.encode(text))
+    
+    except ImportError:
+        # Fallback to character-based estimation if tiktoken not available
+        # GPT-style tokenizers: ~0.25 tokens per character
+        return int(len(text) * 0.25)
+    except Exception:
+        # Fallback on any other error
+        return int(len(text) * 0.25)
 
 
 def encode_contexts_hybrid(
