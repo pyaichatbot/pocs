@@ -35,7 +35,7 @@ class BaseKnowledgeBaseRepository(abc.ABC):
 
     @abc.abstractmethod
     def similarity_search(
-        self, query: str, k: int = 5
+        self, query: str, k: int = 5, filter_repo_urls: List[str] | None = None
     ) -> List[Dict[str, Any]]:
         """Return the top ``k`` documents most similar to the query.
 
@@ -43,6 +43,12 @@ class BaseKnowledgeBaseRepository(abc.ABC):
         is a dictionary containing at least the keys ``doc_id``,
         ``chunk_id``, ``content`` and ``metadata``.  Additional keys
         (e.g. similarity score) may be included.
+
+        Args:
+            query: Natural language query string.
+            k: Number of results to return.
+            filter_repo_urls: Optional list of repository URLs to filter by.
+                            If provided, only return results from these repositories.
         """
         raise NotImplementedError
 
@@ -133,3 +139,28 @@ class BaseKnowledgeBaseRepository(abc.ABC):
         index operation.
         """
         raise NotImplementedError
+
+    def get_distinct_repo_urls(self) -> List[str]:
+        """Get distinct repository URLs from all indexed documents.
+
+        Returns:
+            List of unique repository URLs (normalized).
+        """
+        # Default implementation uses list_all_documents
+        # Subclasses should override for better performance
+        try:
+            all_docs = self.list_all_documents()
+            repo_urls = set()
+            for doc in all_docs:
+                metadata = doc.get("metadata") or {}
+                repo_url = metadata.get("repo_url")
+                if repo_url:
+                    # Normalize URL
+                    repo_url = repo_url.rstrip(".git")
+                    if not repo_url.startswith("http"):
+                        repo_url = f"https://{repo_url}"
+                    repo_urls.add(repo_url)
+            return sorted(list(repo_urls))
+        except Exception:
+            # If list_all_documents not available, return empty
+            return []

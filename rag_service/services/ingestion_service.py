@@ -35,6 +35,7 @@ from ..utils.document_loader import (
     split_document_text,
 )
 from ..utils.logging import get_logger, log_event
+from ..utils.repo_validator import RepoAccessValidator
 from ..config import Settings
 
 
@@ -45,6 +46,8 @@ class IngestionService:
         self.kb_repo = kb_repo
         self.settings = settings
         self.logger = get_logger(self.__class__.__name__)
+        # Initialize repo validator for getting repo info
+        self.repo_validator = RepoAccessValidator()
         # Get chunking parameters from settings
         if settings:
             self.chunk_max_words = settings.chunk_max_words
@@ -62,7 +65,7 @@ class IngestionService:
         return hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
 
     def _process_single_file(
-        self, rel_path: str, content: str
+        self, rel_path: str, content: str, repo_metadata: Dict[str, Any] | None = None
     ) -> List[Dict[str, Any]]:
         """Process a single document file (markdown or PDF) into chunks.
 
@@ -72,6 +75,7 @@ class IngestionService:
         Args:
             rel_path: Relative path of the file.
             content: File content.
+            repo_metadata: Optional repository metadata (repo_url, repo_id, repo_full_path).
         Returns:
             List of document dictionaries for this file.
         """
@@ -84,6 +88,12 @@ class IngestionService:
             overlap=self.chunk_overlap_words,
         )
         documents = []
+        
+        # Build metadata with repository information
+        metadata = {"file_hash": file_hash}
+        if repo_metadata:
+            metadata.update(repo_metadata)
+        
         for idx, chunk in enumerate(chunks):
             documents.append(
                 {
@@ -91,13 +101,13 @@ class IngestionService:
                     "chunk_id": f"{doc_id}:{idx}",
                     "path": rel_path,
                     "content": chunk,
-                    "metadata": {"file_hash": file_hash},
+                    "metadata": metadata,
                 }
             )
         return documents
 
     def _prepare_documents(
-        self, files: List[Tuple[str, str]], parallel: bool = True
+        self, files: List[Tuple[str, str]], parallel: bool = True, repo_metadata: Dict[str, Any] | None = None
     ) -> List[Dict[str, Any]]:
         """Split markdown files into chunks and attach metadata.
 
@@ -108,6 +118,7 @@ class IngestionService:
         Args:
             files: A list of tuples (relative_path, file_content).
             parallel: Whether to process files in parallel. Defaults to True.
+            repo_metadata: Optional repository metadata to include in all chunks.
         Returns:
             A list of document dictionaries ready for insertion into the
             knowledge base.
@@ -119,7 +130,7 @@ class IngestionService:
         if len(files) <= 10 or not parallel:
             documents: List[Dict[str, Any]] = []
             for rel_path, content in files:
-                documents.extend(self._process_single_file(rel_path, content))
+                documents.extend(self._process_single_file(rel_path, content, repo_metadata))
             return documents
 
         # Parallel processing for larger file sets
@@ -127,7 +138,7 @@ class IngestionService:
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit all file processing tasks
             future_to_file = {
-                executor.submit(self._process_single_file, rel_path, content): rel_path
+                executor.submit(self._process_single_file, rel_path, content, repo_metadata): rel_path
                 for rel_path, content in files
             }
 
@@ -203,6 +214,33 @@ class IngestionService:
             A summary dictionary with counts of indexed documents and chunks.
         """
         log_event(self.logger, "index_start", repo=repo_url, branch=branch)
+        
+        # Get repository information using token
+        repo_info = self.repo_validator.get_repo_info(token, repo_url)
+        if not repo_info:
+            log_event(
+                self.logger,
+                "index_repo_info_failed",
+                repo=repo_url,
+                message="Could not get repository info - token may not have access",
+            )
+            # Continue without repo metadata (for backward compatibility)
+            repo_metadata = None
+        else:
+            repo_metadata = {
+                "repo_url": repo_info.get("repo_url", repo_url),
+                "repo_id": repo_info.get("repo_id", ""),
+                "repo_full_path": repo_info.get("repo_full_path", ""),
+                "provider": repo_info.get("provider", "gitlab"),
+            }
+            log_event(
+                self.logger,
+                "index_repo_info_retrieved",
+                repo=repo_url,
+                repo_id=repo_metadata.get("repo_id"),
+                repo_full_path=repo_metadata.get("repo_full_path"),
+            )
+        
         try:
             repo_dir = clone_repo(repo_url, token, branch)
         except GitLabError as exc:
@@ -216,7 +254,7 @@ class IngestionService:
                 count=len(files),
                 parallel=self.max_workers > 1,
             )
-            documents = self._prepare_documents(files, parallel=True)
+            documents = self._prepare_documents(files, parallel=True, repo_metadata=repo_metadata)
             # Replace any existing documents for these doc_ids
             doc_ids = list({doc["doc_id"] for doc in documents})
             try:
@@ -252,6 +290,32 @@ class IngestionService:
             Summary dictionary with counts of processed files and chunks.
         """
         log_event(self.logger, "delta_index_start", repo=repo_url, branch=branch)
+        
+        # Get repository information using token
+        repo_info = self.repo_validator.get_repo_info(token, repo_url)
+        if not repo_info:
+            log_event(
+                self.logger,
+                "delta_index_repo_info_failed",
+                repo=repo_url,
+                message="Could not get repository info - token may not have access",
+            )
+            repo_metadata = None
+        else:
+            repo_metadata = {
+                "repo_url": repo_info.get("repo_url", repo_url),
+                "repo_id": repo_info.get("repo_id", ""),
+                "repo_full_path": repo_info.get("repo_full_path", ""),
+                "provider": repo_info.get("provider", "gitlab"),
+            }
+            log_event(
+                self.logger,
+                "delta_index_repo_info_retrieved",
+                repo=repo_url,
+                repo_id=repo_metadata.get("repo_id"),
+                repo_full_path=repo_metadata.get("repo_full_path"),
+            )
+        
         try:
             repo_dir = clone_repo(repo_url, token, branch)
         except GitLabError as exc:
@@ -340,6 +404,12 @@ class IngestionService:
                 """Process a single file and return documents and whether it was modified."""
                 docs = []
                 is_modified = False
+                
+                # Build metadata with repository information
+                metadata = {"file_hash": file_hash}
+                if repo_metadata:
+                    metadata.update(repo_metadata)
+                
                 if rel_path not in existing_hash:
                     # New file
                     doc_id = rel_path
@@ -350,7 +420,7 @@ class IngestionService:
                                 "chunk_id": f"{doc_id}:{idx}",
                                 "path": rel_path,
                                 "content": chunk,
-                                "metadata": {"file_hash": file_hash},
+                                "metadata": metadata,
                             }
                         )
                 elif existing_hash[rel_path] != file_hash:
@@ -364,7 +434,7 @@ class IngestionService:
                                 "chunk_id": f"{doc_id}:{idx}",
                                 "path": rel_path,
                                 "content": chunk,
-                                "metadata": {"file_hash": file_hash},
+                                "metadata": metadata,
                             }
                         )
                 return docs, is_modified

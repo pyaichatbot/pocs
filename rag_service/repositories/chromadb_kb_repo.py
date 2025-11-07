@@ -128,22 +128,46 @@ class ChromaDBKnowledgeBaseRepository(BaseKnowledgeBaseRepository):
             self.logger.error("Failed to upsert documents: %s", exc)
             raise
 
-    def similarity_search(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
+    def similarity_search(
+        self, query: str, k: int = 5, filter_repo_urls: List[str] | None = None
+    ) -> List[Dict[str, Any]]:
         """Return the top k documents most similar to the query using embeddings.
 
         Args:
             query: Natural language query string.
             k: Number of results to return.
+            filter_repo_urls: Optional list of repository URLs to filter by.
 
         Returns:
             List of result dictionaries with doc_id, chunk_id, content, metadata, score.
         """
         try:
-            results = self.collection.query(
-                query_texts=[query],
-                n_results=k,
-                include=["documents", "metadatas", "distances"],
-            )
+            # Build ChromaDB where filter if repo filtering is requested
+            where_filter = None
+            if filter_repo_urls:
+                # Normalize repo URLs for filtering
+                normalized_repos = []
+                for repo_url in filter_repo_urls:
+                    normalized = repo_url.rstrip(".git")
+                    if not normalized.startswith("http"):
+                        normalized = f"https://{normalized}"
+                    normalized_repos.append(normalized)
+                
+                # ChromaDB supports $in operator for metadata filtering
+                if len(normalized_repos) == 1:
+                    where_filter = {"repo_url": normalized_repos[0]}
+                else:
+                    where_filter = {"repo_url": {"$in": normalized_repos}}
+            
+            query_kwargs = {
+                "query_texts": [query],
+                "n_results": k,
+                "include": ["documents", "metadatas", "distances"],
+            }
+            if where_filter:
+                query_kwargs["where"] = where_filter
+            
+            results = self.collection.query(**query_kwargs)
 
             # Convert ChromaDB results to standard format
             output: List[Dict[str, Any]] = []
@@ -324,4 +348,35 @@ class ChromaDBKnowledgeBaseRepository(BaseKnowledgeBaseRepository):
         except Exception as exc:
             self.logger.error("Failed to list documents: %s", exc)
             return []
+
+    def get_distinct_repo_urls(self) -> List[str]:
+        """Get distinct repository URLs from all indexed documents.
+
+        Returns:
+            List of unique repository URLs (normalized).
+        """
+        try:
+            # Use ChromaDB's get method to fetch all metadata
+            # More efficient than listing all documents
+            results = self.collection.get(
+                include=["metadatas"],
+                limit=None,  # Get all
+            )
+            
+            repo_urls = set()
+            if results["metadatas"]:
+                for metadata in results["metadatas"]:
+                    repo_url = metadata.get("repo_url")
+                    if repo_url:
+                        # Normalize URL
+                        normalized = repo_url.rstrip(".git")
+                        if not normalized.startswith("http"):
+                            normalized = f"https://{normalized}"
+                        repo_urls.add(normalized)
+            
+            return sorted(list(repo_urls))
+        except Exception as exc:
+            self.logger.error("Failed to get distinct repo URLs: %s", exc)
+            # Fallback to base implementation
+            return super().get_distinct_repo_urls()
 

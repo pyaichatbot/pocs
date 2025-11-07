@@ -25,10 +25,11 @@ If required LLM libraries are missing, errors will be raised at start time.
 from __future__ import annotations
 
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from typing import Optional
 
 from .config import get_settings
 from .repositories.factory import RepositoryFactory
@@ -89,36 +90,39 @@ class IndexRequest(BaseModel):
     token: str
     branch: str | None = None
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "repo_url": "https://gitlab.com/namespace/project.git",
                 "token": "your-gitlab-token",
                 "branch": "main"
             }
         }
+    }
 
 
 class SearchRequest(BaseModel):
     query: str
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "query": "What is the authentication flow?"
             }
         }
+    }
 
 
 class LocalIndexRequest(BaseModel):
     folder_path: str
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "folder_path": "/path/to/markdown/folder"
             }
         }
+    }
 
 
 @app.post("/index")
@@ -194,11 +198,62 @@ def index_local_folder(req: LocalIndexRequest):
 
 @app.post("/search")
 def search(req: SearchRequest):
-    """Answer a query using the indexed knowledge base and an LLM."""
+    """Answer a query using the indexed knowledge base and an LLM.
+    
+    This endpoint searches all indexed content (local folders and repositories).
+    For repository-specific search with access control, use /search-repo instead.
+    """
     log_event(logger, "api_search_request", query=req.query)
     try:
         result = search_service.answer(req.query)
         return result
     except Exception as exc:
         log_event(logger, "api_search_error", error=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/search-repo")
+def search_repo(
+    req: SearchRequest,
+    x_gitlab_token: Optional[str] = Header(None, alias="X-GitLab-Token"),
+    x_github_token: Optional[str] = Header(None, alias="X-GitHub-Token"),
+):
+    """Answer a query using indexed GitLab/GitHub repositories with access control.
+    
+    This endpoint:
+    1. Gets all distinct repository URLs from the indexed data
+    2. Validates which repositories the provided token can access
+    3. Filters search results to only accessible repositories
+    
+    Headers:
+    - X-GitLab-Token: GitLab personal access token (for GitLab repos)
+    - X-GitHub-Token: GitHub personal access token (for GitHub repos)
+    
+    At least one token must be provided. The system will use the appropriate
+    token based on the repository provider.
+    
+    Returns search results only from repositories the token has access to.
+    """
+    log_event(logger, "api_search_repo_request", query=req.query)
+    
+    # Get token from headers (prefer GitLab, fallback to GitHub)
+    token = x_gitlab_token or x_github_token
+    
+    if not token:
+        log_event(
+            logger,
+            "api_search_repo_no_token",
+            query=req.query,
+            message="No GitLab or GitHub token provided in headers",
+        )
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required. Provide either X-GitLab-Token or X-GitHub-Token header.",
+        )
+    
+    try:
+        result = search_service.answer_with_token_validation(query=req.query, token=token)
+        return result
+    except Exception as exc:
+        log_event(logger, "api_search_repo_error", query=req.query, error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))

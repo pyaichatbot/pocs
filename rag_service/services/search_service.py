@@ -24,6 +24,8 @@ from ..llm_client import DocumentChunk, LLMClient
 from ..utils.logging import get_logger, log_event
 from ..utils.reranker import Reranker
 from ..utils.web_crawler import WebCrawler
+from ..utils.web_search import WebSearch, WebSearchError
+from ..utils.repo_validator import RepoAccessValidator
 from ..config import Settings
 
 
@@ -78,20 +80,86 @@ class SearchService:
         else:
             log_event(self.logger, "web_crawler_disabled", reason="no_settings_provided")
 
-    def answer(self, query: str) -> Dict[str, object]:
+        # Initialize web search if enabled
+        self.web_search: Optional[WebSearch] = None
+        if settings:
+            web_search_enabled = getattr(settings, "web_search_enabled", False)
+            log_event(
+                self.logger,
+                "web_search_config_check",
+                enabled=web_search_enabled,
+                settings_present=settings is not None,
+            )
+            if web_search_enabled:
+                try:
+                    # Pass web crawler to web search so it can crawl URLs for full content
+                    # If web crawler is not enabled, web search will create a basic one
+                    self.web_search = WebSearch(
+                        provider=getattr(settings, "web_search_provider", "duckduckgo"),
+                        max_results=getattr(settings, "web_search_max_results", 5),
+                        max_crawl_urls=getattr(settings, "web_search_max_crawl_urls", 3),
+                        max_content_length=getattr(settings, "web_search_max_content_length", 50000),
+                        max_content_per_url=getattr(settings, "web_search_max_content_per_url", 10000),
+                        timeout=getattr(settings, "web_crawler_timeout", 10),  # Reuse crawler timeout
+                        llm_client=llm_client,  # Pass LLM client for relevance checking
+                        web_crawler=self.web_crawler,  # Reuse web crawler if available
+                        crawl_urls=True,  # Always crawl URLs to get full content
+                    )
+                    log_event(
+                        self.logger,
+                        "web_search_initialized",
+                        enabled=True,
+                        provider=getattr(settings, "web_search_provider", "duckduckgo"),
+                    )
+                except WebSearchError as exc:
+                    log_event(
+                        self.logger,
+                        "web_search_initialization_failed",
+                        error=str(exc),
+                        reason="configuration_error",
+                    )
+                    self.web_search = None
+            else:
+                log_event(self.logger, "web_search_disabled", reason="not_enabled_in_config")
+        else:
+            log_event(self.logger, "web_search_disabled", reason="no_settings_provided")
+
+        # Initialize repo validator for access control
+        self.repo_validator = RepoAccessValidator()
+
+    def answer(self, query: str, filter_repo_urls: List[str] | None = None) -> Dict[str, object]:
         """Retrieve relevant contexts and optionally generate an answer.
 
         Args:
             query: The user's natural language question.
+            filter_repo_urls: Optional list of repository URLs to filter results by.
+                           If provided, only return results from these repositories.
         Returns:
             A dictionary containing either an ``answer`` field with the
             generated response or a ``contexts`` field with the raw
             document chunks.
         """
-        log_event(self.logger, "search_start", query=query)
+        log_event(
+            self.logger,
+            "search_start",
+            query=query,
+            filter_repos=filter_repo_urls is not None,
+            repo_count=len(filter_repo_urls) if filter_repo_urls else 0,
+        )
         try:
-            # Perform hybrid search
-            results = self.kb_repo.hybrid_search(query, k=self.max_chunks * 2)
+            # Perform similarity search with optional repository filtering
+            # Use similarity_search directly since hybrid_search doesn't support filtering yet
+            if filter_repo_urls:
+                # If filtering is requested, use similarity search with filter
+                sim_results = self.kb_repo.similarity_search(
+                    query, k=self.max_chunks * 2, filter_repo_urls=filter_repo_urls
+                )
+                # For hybrid search with filtering, we'd need to also filter keyword search
+                # For now, use similarity results only when filtering
+                results = sim_results
+            else:
+                # No filtering - use hybrid search as before
+                results = self.kb_repo.hybrid_search(query, k=self.max_chunks * 2)
             
             # Apply reranking if enabled
             if self.reranker and self.reranker.enabled:
@@ -102,7 +170,97 @@ class SearchService:
         except Exception as exc:
             log_event(self.logger, "search_error", error=str(exc))
             raise
-        # Convert results to DocumentChunk objects for LLM
+
+        # Check if web search should be triggered (before processing KB results)
+        web_search_contexts: List[DocumentChunk] = []
+        if self.web_search:
+            try:
+                min_score_threshold = getattr(
+                    self.settings, "web_search_min_score_threshold", 0.5
+                ) if self.settings else 0.5
+
+                should_trigger = self.web_search.should_trigger_web_search(
+                    kb_results=results,
+                    query=query,
+                    min_score_threshold=min_score_threshold,
+                )
+
+                if should_trigger:
+                    log_event(self.logger, "web_search_triggering", query=query)
+                    search_results = self.web_search.search(query)
+
+                    for idx, search_result in enumerate(search_results):
+                        # Use full content if available, otherwise fall back to snippet
+                        content = search_result.get("content", "")
+                        snippet = search_result.get("snippet", "")
+                        
+                        # If content is just the snippet (short), try to get more context
+                        if content and len(content) > 200:
+                            # Full content was crawled
+                            full_content = f"Title: {search_result.get('title', '')}\n\n{content}"
+                        elif snippet:
+                            # Use snippet if full content not available
+                            full_content = f"Title: {search_result.get('title', '')}\n\nSnippet: {snippet}\n\nURL: {search_result.get('url', '')}"
+                        else:
+                            # Fallback
+                            full_content = f"Title: {search_result.get('title', '')}\n\nURL: {search_result.get('url', '')}"
+
+                        web_search_contexts.append(
+                            DocumentChunk(
+                                doc_id=f"web_search_{idx}",
+                                chunk_id=f"web_search_{idx}_chunk",
+                                path=search_result.get("url", ""),
+                                content=full_content,
+                                metadata={
+                                    "source": "web_search",
+                                    "url": search_result.get("url", ""),
+                                    "title": search_result.get("title", ""),
+                                    "provider": self.web_search.provider,
+                                    "crawled": len(content) > len(snippet) if content and snippet else bool(content),
+                                },
+                            )
+                        )
+
+                    if web_search_contexts:
+                        log_event(
+                            self.logger,
+                            "web_search_success",
+                            query=query,
+                            results_count=len(web_search_contexts),
+                        )
+                    else:
+                        log_event(
+                            self.logger,
+                            "web_search_no_results",
+                            query=query,
+                        )
+                else:
+                    log_event(
+                        self.logger,
+                        "web_search_not_triggered",
+                        query=query,
+                        reason="sufficient_kb_results",
+                    )
+            except WebSearchError as exc:
+                log_event(
+                    self.logger,
+                    "web_search_error",
+                    query=query,
+                    error=str(exc),
+                    exc_info=True,
+                )
+                # Continue with KB results only if web search fails
+            except Exception as exc:
+                log_event(
+                    self.logger,
+                    "web_search_unexpected_error",
+                    query=query,
+                    error=str(exc),
+                    exc_info=True,
+                )
+                # Continue with KB results only if web search fails
+
+        # Convert KB results to DocumentChunk objects for LLM
         contexts: List[DocumentChunk] = []
         for r in results:
             contexts.append(
@@ -167,11 +325,101 @@ class SearchService:
                 message="Web crawler is None - check initialization logs at startup",
             )
 
+        # Combine all contexts: KB results first, then web search results, then web crawled results
+        # Prioritize KB results, but supplement with web search when KB is insufficient
+        all_contexts = contexts + web_search_contexts
+
         if self.llm_client and self.llm_client.is_available():
-            answer = self.llm_client.generate_answer(query, contexts)
+            answer = self.llm_client.generate_answer(query, all_contexts)
             log_event(self.logger, "search_complete", query=query, answer=answer)
             return {"answer": answer}
         else:
             # No LLM available; return contexts for caller to process
             log_event(self.logger, "search_complete", query=query, answer="none")
-            return {"contexts": [c.content for c in contexts]}
+            return {"contexts": [c.content for c in all_contexts]}
+
+    def answer_with_token_validation(self, query: str, token: str) -> Dict[str, object]:
+        """Answer query with repository access control based on user token.
+
+        This method:
+        1. Gets all distinct repository URLs from the database
+        2. Validates which repos the token can access
+        3. Filters search results to only accessible repositories
+
+        Args:
+            query: The user's natural language question.
+            token: GitLab or GitHub personal access token (from request headers).
+
+        Returns:
+            A dictionary containing either an ``answer`` field with the
+            generated response or a ``contexts`` field with the raw
+            document chunks.
+        """
+        log_event(self.logger, "search_repo_start", query=query)
+        
+        try:
+            # 1. Get all distinct repository URLs from database
+            all_repo_urls = self.kb_repo.get_distinct_repo_urls()
+            
+            if not all_repo_urls:
+                log_event(
+                    self.logger,
+                    "search_repo_no_repos",
+                    query=query,
+                    message="No repositories found in database",
+                )
+                # No repos indexed, return empty result
+                if self.llm_client and self.llm_client.is_available():
+                    return {
+                        "answer": "No repositories are currently indexed in the knowledge base."
+                    }
+                return {"contexts": []}
+
+            log_event(
+                self.logger,
+                "search_repo_repos_found",
+                query=query,
+                total_repos=len(all_repo_urls),
+            )
+
+            # 2. Validate token access to repositories
+            accessible_repo_urls = self.repo_validator.get_accessible_repos(
+                token=token,
+                repo_urls=all_repo_urls,
+            )
+
+            if not accessible_repo_urls:
+                log_event(
+                    self.logger,
+                    "search_repo_no_access",
+                    query=query,
+                    total_repos=len(all_repo_urls),
+                    message="Token does not have access to any indexed repositories",
+                )
+                # No accessible repos
+                if self.llm_client and self.llm_client.is_available():
+                    return {
+                        "answer": "You do not have access to any indexed repositories, or the provided token is invalid."
+                    }
+                return {"contexts": []}
+
+            log_event(
+                self.logger,
+                "search_repo_access_validated",
+                query=query,
+                total_repos=len(all_repo_urls),
+                accessible_repos=len(accessible_repo_urls),
+            )
+
+            # 3. Search with repository filter
+            return self.answer(query=query, filter_repo_urls=list(accessible_repo_urls))
+
+        except Exception as exc:
+            log_event(
+                self.logger,
+                "search_repo_error",
+                query=query,
+                error=str(exc),
+                exc_info=True,
+            )
+            raise

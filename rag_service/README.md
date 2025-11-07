@@ -12,6 +12,8 @@ A production-ready Retrieval-Augmented Generation (RAG) service for indexing Git
 - **Hybrid Search**: Combines semantic and keyword search for better results
 - **LLM Integration**: Supports Azure OpenAI and Anthropic for generating answers
 - **Multiple Vector DB Support**: ChromaDB (default), pgvector, and Cosmos DB
+- **Web Search**: Automatically searches the web when knowledge base results are insufficient (DuckDuckGo, Tavily, SerpAPI)
+- **Web Crawler**: Extracts and crawls URLs from queries (with domain allowlist)
 - **REST API**: FastAPI-based API with OpenAPI documentation
 - **Chatbot Interface**: Interactive HTML chatbot for querying the knowledge base
 
@@ -108,6 +110,15 @@ None - the service works out of the box with ChromaDB defaults.
 - `AZURE_OPENAI_API_KEY`: API key
 - `AZURE_OPENAI_DEPLOYMENT_NAME`: Deployment name
 
+**LLM Token Format** (Token Optimization):
+- `USE_LLM_TOKEN_FORMAT`: Token format for LLM context (default: `hybrid`)
+  - `plain`: Plain text concatenation (no optimization, backward compatible)
+  - `toon`: Fully flattened TOON format (maximum token savings, ~40%)
+  - `hybrid`: TOON for content + JSON for metadata (recommended, ~30% savings)
+  - `json`: JSON format (structured but verbose, for debugging)
+  
+  The `hybrid` format uses TOON for uniform content (efficient) and JSON for complex metadata (preserves structure), providing the best balance of token savings and information preservation.
+
 ### Example Environment File
 
 Create a `.env` file:
@@ -131,6 +142,18 @@ ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
 # AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 # AZURE_OPENAI_API_KEY=your-api-key
 # AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4
+
+# LLM Token Format (optional - for token optimization)
+USE_LLM_TOKEN_FORMAT=hybrid  # Options: plain, toon, hybrid, json
+
+# Web Search (optional - enable when KB results are insufficient)
+# WEB_SEARCH_ENABLED=true
+# WEB_SEARCH_PROVIDER=duckduckgo  # duckduckgo (free), tavily, or serpapi
+# WEB_SEARCH_MAX_RESULTS=5  # Max search results to return
+# WEB_SEARCH_MAX_CRAWL_URLS=3  # Max URLs to crawl (remaining use snippets)
+# WEB_SEARCH_MAX_CONTENT_LENGTH=50000  # Total max chars across all URLs (~12-15k tokens)
+# WEB_SEARCH_MAX_CONTENT_PER_URL=10000  # Max chars per URL (~2.5-3k tokens)
+# WEB_SEARCH_MIN_SCORE_THRESHOLD=0.5  # KB score threshold to trigger web search
 ```
 
 ## Running the Service
@@ -480,6 +503,67 @@ Enable binary quantization for reduced storage (when supported):
 ```bash
 QUANTIZATION_ENABLED=true
 ```
+
+#### Web Search
+Enable web search when knowledge base results are insufficient. This allows the system to answer questions about topics not in the indexed knowledge base, similar to ChatGPT or Cursor.
+
+**DuckDuckGo (Free, No API Key Required)**:
+```bash
+WEB_SEARCH_ENABLED=true
+WEB_SEARCH_PROVIDER=duckduckgo
+WEB_SEARCH_MAX_RESULTS=5
+WEB_SEARCH_MAX_CRAWL_URLS=3
+WEB_SEARCH_MAX_CONTENT_LENGTH=50000
+WEB_SEARCH_MAX_CONTENT_PER_URL=10000
+WEB_SEARCH_MIN_SCORE_THRESHOLD=0.5
+```
+
+**Tavily (Requires API Key)**:
+```bash
+WEB_SEARCH_ENABLED=true
+WEB_SEARCH_PROVIDER=tavily
+TAVILY_API_KEY=your-tavily-api-key
+WEB_SEARCH_MAX_RESULTS=5
+WEB_SEARCH_MAX_CRAWL_URLS=3
+WEB_SEARCH_MAX_CONTENT_LENGTH=50000
+WEB_SEARCH_MAX_CONTENT_PER_URL=10000
+WEB_SEARCH_MIN_SCORE_THRESHOLD=0.5
+```
+
+**SerpAPI (Requires API Key)**:
+```bash
+WEB_SEARCH_ENABLED=true
+WEB_SEARCH_PROVIDER=serpapi
+SERPAPI_API_KEY=your-serpapi-key
+WEB_SEARCH_MAX_RESULTS=5
+WEB_SEARCH_MAX_CRAWL_URLS=3
+WEB_SEARCH_MAX_CONTENT_LENGTH=50000
+WEB_SEARCH_MAX_CONTENT_PER_URL=10000
+WEB_SEARCH_MIN_SCORE_THRESHOLD=0.5
+```
+
+**How It Works**:
+1. When a user queries the knowledge base, the system first searches the indexed documents
+2. If the KB results have low relevance scores (below `WEB_SEARCH_MIN_SCORE_THRESHOLD`) or no results are found, web search is automatically triggered
+3. Web search finds relevant URLs, then **automatically crawls those URLs** to extract full page content (not just snippets)
+4. Full page content from web search is combined with KB results and sent to the LLM for answer generation
+5. The system prioritizes KB results but supplements with web search when needed
+6. If URL crawling fails, the system falls back to using search snippets
+
+**Configuration Options**:
+- `WEB_SEARCH_ENABLED`: Enable/disable web search (default: `false`)
+- `WEB_SEARCH_PROVIDER`: Search provider - `duckduckgo`, `tavily`, or `serpapi` (default: `duckduckgo`)
+- `WEB_SEARCH_MAX_RESULTS`: Maximum number of web search results to return (default: `5`)
+- `WEB_SEARCH_MAX_CRAWL_URLS`: Maximum number of URLs to crawl for full content (default: `3`)
+  - Limits crawling to manage context length and performance
+  - Remaining results use snippets only
+- `WEB_SEARCH_MAX_CONTENT_LENGTH`: Total maximum content length across all crawled URLs in characters (default: `50000`, ~12-15k tokens)
+  - Content is truncated if this limit is exceeded
+- `WEB_SEARCH_MAX_CONTENT_PER_URL`: Maximum content length per crawled URL in characters (default: `10000`, ~2.5-3k tokens)
+  - Each URL's content is truncated if exceeded
+- `WEB_SEARCH_MIN_SCORE_THRESHOLD`: Minimum average KB score to trigger web search (0.0-1.0, default: `0.5`)
+
+**Example**: If a user asks "explain google adk agent creation" and your knowledge base has no information about it, the system will automatically search the web and provide an answer based on web search results.
 
 ## Docker Setup
 

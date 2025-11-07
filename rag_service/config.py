@@ -48,6 +48,22 @@ Key settings include:
 * ``WEB_CRAWLER_TIMEOUT`` – request timeout in seconds.  Defaults to 10.
 * ``WEB_CRAWLER_MAX_SIZE`` – maximum content size to download in bytes.  Defaults to 1000000 (1MB).
 
+**Web Search**:
+* ``WEB_SEARCH_ENABLED`` – enable web search when knowledge base results are insufficient.  Defaults to false.
+* ``WEB_SEARCH_PROVIDER`` – search provider ("duckduckgo", "tavily", "serpapi").  Defaults to "duckduckgo".
+  DuckDuckGo is free and requires no API key. Tavily and SerpAPI require API keys.
+* ``WEB_SEARCH_MAX_RESULTS`` – maximum number of web search results to return.  Defaults to 5.
+* ``WEB_SEARCH_MAX_CRAWL_URLS`` – maximum number of URLs to crawl for full content.  Defaults to 3.
+  This limits how many URLs are crawled to manage context length and crawling time.
+* ``WEB_SEARCH_MAX_CONTENT_LENGTH`` – total maximum content length (characters) across all crawled URLs.
+  Defaults to 50000 (50k chars, ~12-15k tokens). Content is truncated if exceeded.
+* ``WEB_SEARCH_MAX_CONTENT_PER_URL`` – maximum content length (characters) per crawled URL.
+  Defaults to 10000 (10k chars, ~2.5-3k tokens). Each URL's content is truncated if exceeded.
+* ``WEB_SEARCH_MIN_SCORE_THRESHOLD`` – minimum average KB score threshold to trigger web search.
+  If KB results average score is below this (0.0-1.0), web search is triggered.  Defaults to 0.5.
+* ``TAVILY_API_KEY`` – Tavily API key (required if WEB_SEARCH_PROVIDER=tavily).
+* ``SERPAPI_API_KEY`` – SerpAPI key (required if WEB_SEARCH_PROVIDER=serpapi).
+
 **LLM Provider**:
 * ``LLM_PROVIDER`` – provider ("azure" or "anthropic").  Defaults to "anthropic"
   if ANTHROPIC_API_KEY is set.
@@ -58,6 +74,12 @@ Key settings include:
 * ``AZURE_OPENAI_DEPLOYMENT_NAME`` – Azure OpenAI deployment name.
 * ``LLM_MAX_TOKENS`` – Maximum tokens for LLM response.  Defaults to 4096.
   Increase for longer responses, decrease to save costs.
+* ``USE_LLM_TOKEN_FORMAT`` – Token format for LLM context ("plain", "toon", "hybrid", "json").
+  Defaults to "hybrid". Options:
+  - "plain": Plain text concatenation (no optimization, backward compatible)
+  - "toon": Fully flattened TOON format (maximum token savings, ~40%)
+  - "hybrid": TOON for content + JSON for metadata (recommended, ~30% savings)
+  - "json": JSON format (structured but verbose, for debugging)
 """
 
 from __future__ import annotations
@@ -90,7 +112,15 @@ class Settings:
     )
 
     # LLM response configuration
-    llm_max_tokens: int = int(os.environ.get("LLM_MAX_TOKENS", "4096"))
+    llm_max_tokens: int = int(os.environ.get("LLM_MAX_TOKENS", "20000"))
+    
+    # LLM token format configuration
+    # Options: "plain" (default), "toon", "hybrid", "json"
+    # - "plain": Plain text concatenation (no optimization)
+    # - "toon": Fully flattened TOON format (maximum token savings)
+    # - "hybrid": TOON for content + JSON for metadata (recommended)
+    # - "json": JSON format (structured, but more tokens)
+    use_llm_token_format: str = os.environ.get("USE_LLM_TOKEN_FORMAT", "hybrid").lower()
 
     # Embedding model configuration
     embedding_model_id: str = os.environ.get(
@@ -144,6 +174,19 @@ class Settings:
     )
     web_crawler_timeout: int = int(os.environ.get("WEB_CRAWLER_TIMEOUT", "10"))
     web_crawler_max_size: int = int(os.environ.get("WEB_CRAWLER_MAX_SIZE", "1000000"))
+
+    # Web search configuration
+    web_search_enabled: bool = os.environ.get("WEB_SEARCH_ENABLED", "false").lower() == "true"
+    web_search_provider: str = os.environ.get("WEB_SEARCH_PROVIDER", "duckduckgo").lower()
+    web_search_max_results: int = int(os.environ.get("WEB_SEARCH_MAX_RESULTS", "5"))
+    web_search_max_crawl_urls: int = int(os.environ.get("WEB_SEARCH_MAX_CRAWL_URLS", "3"))
+    web_search_max_content_length: int = int(os.environ.get("WEB_SEARCH_MAX_CONTENT_LENGTH", "50000"))  # Total chars across all URLs
+    web_search_max_content_per_url: int = int(os.environ.get("WEB_SEARCH_MAX_CONTENT_PER_URL", "10000"))  # Max chars per URL
+    web_search_min_score_threshold: float = float(
+        os.environ.get("WEB_SEARCH_MIN_SCORE_THRESHOLD", "0.5")
+    )
+    tavily_api_key: str | None = os.environ.get("TAVILY_API_KEY")
+    serpapi_api_key: str | None = os.environ.get("SERPAPI_API_KEY")
 
 
 def get_settings() -> Settings:
