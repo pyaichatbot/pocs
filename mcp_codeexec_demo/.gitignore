@@ -163,3 +163,4 @@ Desktop.ini
 logs/
 *.log
 
+.env
