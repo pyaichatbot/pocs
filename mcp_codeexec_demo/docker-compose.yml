@@ -1,0 +1,26 @@
+version: "3.9"
+services:
+  mcp:
+    build: ./mcp_server
+    ports: ["8974:8974"]
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      - MCP_ENDPOINT=http://mcp:8974/mcp
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - AZURE_API_KEY=${AZURE_API_KEY:-}
+      - AZURE_API_BASE=${AZURE_API_BASE:-}
+      - AZURE_API_VERSION=${AZURE_API_VERSION:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - MODEL_ID=${MODEL_ID:-}
+      - ENABLE_PRIVACY_TOKENIZATION=${ENABLE_PRIVACY_TOKENIZATION:-true}
+    depends_on: [mcp]
+    ports: ["8000:8000"]
+  ui:
+    build: ./ui
+    depends_on: [backend]
+    environment:
+      - BACKEND_URL=http://backend:8000
+      - MCP_URL=http://mcp:8974/mcp
+    ports: ["8501:8501"]
