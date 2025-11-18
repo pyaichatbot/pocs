@@ -33,6 +33,12 @@ Usage notes:
 </skill>
 
 <skill>
+<name>angular-component-generator</name>
+<description>Generates Angular components following migration project standards with TypeScript, HTML templates, styling, and unit tests. Useful for migration from ASP.NET pages to Angular components and for consistent component scaffolding.</description>
+<location>project</location>
+</skill>
+
+<skill>
 <name>artifacts-builder</name>
 <description>Suite of tools for creating elaborate, multi-component claude.ai HTML artifacts using modern frontend web technologies (React, Tailwind CSS, shadcn/ui). Use for complex artifacts requiring state management, routing, or shadcn/ui components - not for simple single-file HTML/JSX artifacts.</description>
 <location>project</location>
@@ -65,6 +71,12 @@ Usage notes:
 <skill>
 <name>docx</name>
 <description>"Comprehensive document creation, editing, and analysis with support for tracked changes, comments, formatting preservation, and text extraction. When Claude needs to work with professional documents (.docx files) for: (1) Creating new documents, (2) Modifying or editing content, (3) Working with tracked changes, (4) Adding comments, or any other document tasks"</description>
+<location>project</location>
+</skill>
+
+<skill>
+<name>dotnet-core-backend-generator</name>
+<description>Generates .NET Core Web API structure following Clean Architecture principles with controllers, services, repositories, DTOs, entities, validators, and unit tests to accelerate backend migration and scaffold consistent APIs.</description>
 <location>project</location>
 </skill>
 

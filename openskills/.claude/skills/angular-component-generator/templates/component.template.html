@@ -1,0 +1,12 @@
+<div class="{{component-name-kebab}}">
+  <!-- Loading state -->
+  <div *ngIf="isLoading" role="status" aria-live="polite">Loading...</div>
+
+  <!-- Error state -->
+  <div *ngIf="error" role="alert">{{ error }}</div>
+
+  <!-- Main content -->
+  <div class="{{component-name-kebab}}__content">
+    <!-- TODO: Insert template markup here -->
+  </div>
+</div>
