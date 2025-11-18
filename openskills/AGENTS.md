@@ -39,6 +39,12 @@ Usage notes:
 </skill>
 
 <skill>
+<name>aspnet_migration-artifact-generator</name>
+<description>Analyzes ASP.NET applications and generates migration documentation artifacts (PRP, ARCHITECTURE, AGENTS, CODING_STANDARDS, DESIGN_PATTERNS, MIGRATION_MAPPING, API_CONTRACTS, VALIDATION_CHECKLIST) to support AI-assisted migration to Angular/.NET Core.</description>
+<location>project</location>
+</skill>
+
+<skill>
 <name>brainstorming</name>
 <description>Use when creating or developing, before writing code or implementation plans - refines rough ideas into fully-formed designs through collaborative questioning, alternative exploration, and incremental validation. Don't use during clear 'mechanical' processes</description>
 <location>project</location>
