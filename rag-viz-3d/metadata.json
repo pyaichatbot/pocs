@@ -1,0 +1,5 @@
+{
+  "name": "RAG-Viz-3D",
+  "description": "An interactive 3D visualization of Retrieval-Augmented Generation (RAG) systems for educational purposes, powered by Gemini.",
+  "requestFramePermissions": []
+}
