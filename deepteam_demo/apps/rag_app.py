@@ -12,8 +12,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Apply DeepEval patch for SecretStr handling
-from utils.deepeval_patch import patch_anthropic_model
-patch_anthropic_model()
+from utils.deepeval_patch import patch_all_models
+patch_all_models()
 
 from apps.base_app import BaseLLMApp
 from apps.simple_model_app import SimpleModelApp

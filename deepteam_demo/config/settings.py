@@ -11,6 +11,28 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _get_default_model_name(provider: str, env_var: str) -> str:
+    """Get default model name based on provider.
+    
+    Args:
+        provider: Provider name ("anthropic" or "azure_openai")
+        env_var: Environment variable name to check first
+        
+    Returns:
+        Default model name for the provider
+    """
+    # Check if model name is explicitly set in environment
+    explicit_model = os.getenv(env_var)
+    if explicit_model and explicit_model.strip():
+        return explicit_model.strip()
+    
+    # Return provider-specific default
+    if provider == "azure_openai":
+        return "gpt-5-codex"  # Azure OpenAI default
+    else:
+        return "claude-sonnet-4-20250514"  # Anthropic default
+
+
 @dataclass
 class LLMConfig:
     """LLM provider configuration."""
@@ -35,6 +57,19 @@ class LLMConfig:
                     "ANTHROPIC_API_KEY environment variable is required "
                     "for Anthropic provider"
                 )
+            # Warn if model name looks like Azure OpenAI model
+            if self.model_name and (
+                self.model_name.startswith("gpt-") or 
+                "turbo" in self.model_name.lower() or
+                "ada" in self.model_name.lower()
+            ):
+                import warnings
+                warnings.warn(
+                    f"Model name '{self.model_name}' may not be valid for Anthropic provider. "
+                    f"Anthropic models typically start with 'claude-'. "
+                    f"Did you mean to use provider='azure_openai'?",
+                    UserWarning
+                )
         elif self.provider == "azure_openai":
             required = [
                 ("AZURE_OPENAI_API_KEY", self.azure_openai_api_key),
@@ -47,6 +82,20 @@ class LLMConfig:
                 raise ValueError(
                     f"Missing required Azure OpenAI environment variables: {', '.join(missing)}"
                 )
+            # Warn if model name looks like Anthropic model
+            if self.model_name and (
+                self.model_name.startswith("claude-") or
+                "sonnet" in self.model_name.lower() or
+                "haiku" in self.model_name.lower() or
+                "opus" in self.model_name.lower()
+            ):
+                import warnings
+                warnings.warn(
+                    f"Model name '{self.model_name}' may not be valid for Azure OpenAI provider. "
+                    f"Azure OpenAI models typically start with 'gpt-' or 'gpt-35-'. "
+                    f"Did you mean to use provider='anthropic'?",
+                    UserWarning
+                )
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
 
@@ -58,7 +107,10 @@ class Settings:
     # LLM Configuration
     target_llm: LLMConfig = field(default_factory=lambda: LLMConfig(
         provider=os.getenv("LLM_PROVIDER", "anthropic"),
-        model_name=os.getenv("TARGET_MODEL", "claude-sonnet-4-20250514"),
+        model_name=_get_default_model_name(
+            os.getenv("LLM_PROVIDER", "anthropic"),
+            "TARGET_MODEL"
+        ),
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
         azure_openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
         azure_openai_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
@@ -68,7 +120,10 @@ class Settings:
     
     simulator_llm: LLMConfig = field(default_factory=lambda: LLMConfig(
         provider=os.getenv("SIMULATOR_PROVIDER", "anthropic"),
-        model_name=os.getenv("SIMULATOR_MODEL", "claude-sonnet-4-20250514"),
+        model_name=_get_default_model_name(
+            os.getenv("SIMULATOR_PROVIDER", "anthropic"),
+            "SIMULATOR_MODEL"
+        ),
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
         azure_openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
         azure_openai_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
@@ -78,7 +133,10 @@ class Settings:
     
     evaluation_llm: LLMConfig = field(default_factory=lambda: LLMConfig(
         provider=os.getenv("EVALUATION_PROVIDER", "anthropic"),
-        model_name=os.getenv("EVALUATION_MODEL", "claude-sonnet-4-20250514"),
+        model_name=_get_default_model_name(
+            os.getenv("EVALUATION_PROVIDER", "anthropic"),
+            "EVALUATION_MODEL"
+        ),
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
         azure_openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
         azure_openai_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
@@ -87,8 +145,8 @@ class Settings:
     ))
     
     # Red Teaming Configuration
-    # Reduced max_concurrent to 3 to avoid Anthropic rate limits (429 errors)
-    # Anthropic has strict concurrent connection limits
+    # Reduced max_concurrent to 3 to avoid rate limits (429 errors)
+    # Some LLM providers have strict concurrent connection limits
     max_concurrent: int = int(os.getenv("MAX_CONCURRENT", "3"))
     attacks_per_vulnerability_type: int = int(os.getenv("ATTACKS_PER_VULN", "3"))
     async_mode: bool = os.getenv("ASYNC_MODE", "true").lower() == "true"

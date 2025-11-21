@@ -1,16 +1,18 @@
-"""Patch for DeepEval AnthropicModel to handle SecretStr conversion.
+"""Patch for DeepEval models to handle SecretStr conversion.
 
-This module patches DeepEval's AnthropicModel._build_client method to convert
-Pydantic SecretStr objects to strings before passing them to the Anthropic client.
-This fixes the "Header value must be str or bytes, not <class 'pydantic.types.SecretStr'>" error.
+This module patches DeepEval's model classes to convert Pydantic SecretStr objects
+to strings before passing them to the client libraries. This fixes the
+"Header value must be str or bytes, not <class 'pydantic.types.SecretStr'>" error.
 """
 
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from deepeval.models.llms.anthropic_model import AnthropicModel
+    from deepeval.models.llms.azure_openai_model import AzureOpenAIModel
 
-_patched = False
+_patched_anthropic = False
+_patched_azure = False
 
 
 def patch_anthropic_model():
@@ -19,9 +21,9 @@ def patch_anthropic_model():
     This should be called once at application startup before creating any
     AnthropicModel instances.
     """
-    global _patched
+    global _patched_anthropic
     
-    if _patched:
+    if _patched_anthropic:
         return
     
     try:
@@ -61,7 +63,7 @@ def patch_anthropic_model():
         
         # Apply the patch
         AnthropicModel._build_client = patched_build_client
-        _patched = True
+        _patched_anthropic = True
         
     except ImportError:
         # DeepEval not available, skip patching
@@ -72,6 +74,59 @@ def patch_anthropic_model():
         logging.getLogger(__name__).warning(f"Failed to patch AnthropicModel: {e}")
 
 
+def patch_azure_openai_model():
+    """Patch AzureOpenAIModel to convert SecretStr to string.
+    
+    This should be called once at application startup before creating any
+    AzureOpenAIModel instances.
+    """
+    global _patched_azure
+    
+    if _patched_azure:
+        return
+    
+    try:
+        from deepeval.models.llms.azure_openai_model import AzureOpenAIModel
+        from pydantic import SecretStr
+        
+        # Store original __init__ method
+        original_init = AzureOpenAIModel.__init__
+        
+        def patched_init(self, *args, **kwargs):
+            """Patched __init__ that converts SecretStr to string for API keys."""
+            # Convert SecretStr to string if present in kwargs
+            if 'azure_openai_api_key' in kwargs and kwargs['azure_openai_api_key']:
+                api_key = kwargs['azure_openai_api_key']
+                if isinstance(api_key, SecretStr):
+                    kwargs['azure_openai_api_key'] = api_key.get_secret_value()
+                elif api_key is not None:
+                    kwargs['azure_openai_api_key'] = str(api_key)
+            
+            # Call original __init__
+            return original_init(self, *args, **kwargs)
+        
+        # Apply the patch
+        AzureOpenAIModel.__init__ = patched_init
+        _patched_azure = True
+        
+    except ImportError:
+        # DeepEval not available, skip patching
+        pass
+    except Exception as e:
+        # Log but don't fail if patching fails
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to patch AzureOpenAIModel: {e}")
+
+
+def patch_all_models():
+    """Patch all DeepEval models that may have SecretStr issues.
+    
+    This is a convenience function that patches both Anthropic and Azure OpenAI models.
+    """
+    patch_anthropic_model()
+    patch_azure_openai_model()
+
+
 # Auto-patch on import
-patch_anthropic_model()
+patch_all_models()
 
