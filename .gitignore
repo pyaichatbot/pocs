@@ -4,3 +4,10 @@ code_exec_mcp/
 .env
 .env.local
 .env.*.local
+
+deeptime
+.DS_Store
+.gitignore
+Manager/.DS_Store
+Manager/Fiserv_AI_Managers_Session_Kit/.DS_Store
+.DS_Store
