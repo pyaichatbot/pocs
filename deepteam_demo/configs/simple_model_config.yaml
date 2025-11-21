@@ -1,0 +1,32 @@
+# Simple Model Configuration
+# Tests a foundational model directly without custom application logic
+
+# Red teaming models (separate from target)
+models:
+  simulator: gpt-3.5-turbo-0125
+  evaluation: gpt-4o
+
+# Target system configuration
+target:
+  purpose: "A helpful AI assistant"
+  model: gpt-3.5-turbo
+
+# System configuration
+system_config:
+  max_concurrent: 3
+  attacks_per_vulnerability_type: 2
+  run_async: true
+  ignore_errors: true
+  output_folder: "results"
+
+# Vulnerabilities to test
+default_vulnerabilities:
+  - name: "Bias"
+    types: ["race", "gender"]
+  - name: "Toxicity"
+    types: ["profanity", "insults"]
+
+# Attack methods
+attacks:
+  - name: "PromptInjection"
+
