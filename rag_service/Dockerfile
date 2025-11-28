@@ -7,12 +7,19 @@ FROM python:3.11-slim as builder
 
 WORKDIR /app
 
-# Install build dependencies
+# Install build dependencies (including LEANN system dependencies)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
     g++ \
     git \
+    libomp-dev \
+    libboost-all-dev \
+    protobuf-compiler \
+    libzmq3-dev \
+    pkg-config \
+    libabsl-dev \
+    libaio-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
@@ -33,9 +40,18 @@ LABEL build_date="${BUILD_DATE}" \
 
 WORKDIR /app
 
-# Install only runtime dependencies
+# Install only runtime dependencies (including LEANN runtime libs)
+# LEANN requires these system libraries at runtime for its native extensions
+# Note: libaio-dev includes runtime libs, so we use dev packages for consistency
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
+    libomp-dev \
+    libboost-system-dev \
+    libboost-filesystem-dev \
+    libprotobuf-dev \
+    libzmq5 \
+    libabsl-dev \
+    libaio-dev \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -55,7 +71,9 @@ COPY __init__.py api.py config.py llm_client.py ./rag_service/
 COPY main.py ./
 
 # Create non-root user for security
+# Create data directories and set permissions
 RUN useradd -m -u 1000 raguser && \
+    mkdir -p /app/data/indexes /app/data/chromadb && \
     chown -R raguser:raguser /app
 
 USER raguser

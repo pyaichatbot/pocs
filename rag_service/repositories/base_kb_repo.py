@@ -140,6 +140,17 @@ class BaseKnowledgeBaseRepository(abc.ABC):
         """
         raise NotImplementedError
 
+    def list_all_documents(self) -> List[Dict[str, Any]]:
+        """Return all documents in the repository.
+        
+        Default implementation raises NotImplementedError. Subclasses should
+        override this method if they support listing all documents.
+        
+        Returns:
+            List of dictionaries with doc_id, chunk_id, path, content, metadata.
+        """
+        raise NotImplementedError
+
     def get_distinct_repo_urls(self) -> List[str]:
         """Get distinct repository URLs from all indexed documents.
 

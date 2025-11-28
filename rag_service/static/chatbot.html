@@ -199,6 +199,77 @@
         .chat-messages::-webkit-scrollbar-thumb:hover {
             background: #999;
         }
+
+        .index-section {
+            padding: 20px 30px;
+            background: #f8f9fa;
+            border-top: 1px solid #e0e0e0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .index-controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .index-input {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .index-input:focus {
+            border-color: #667eea;
+        }
+
+        .index-button {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .index-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .index-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .index-status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 13px;
+            display: none;
+        }
+
+        .index-status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .index-status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
     </style>
 </head>
 <body>
@@ -206,6 +277,13 @@
         <div class="chat-header">
             <h1>📚 RAG Knowledge Base Chatbot</h1>
             <p>Ask questions about your indexed documents</p>
+            <div style="margin-top: 15px;">
+                <label for="ragModeToggle" style="font-size: 13px; opacity: 0.9; margin-right: 10px;">RAG Mode:</label>
+                <select id="ragModeToggle" style="padding: 5px 10px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.2); color: white; font-size: 13px; cursor: pointer;">
+                    <option value="traditional">Traditional</option>
+                    <option value="leann">LEANN</option>
+                </select>
+            </div>
         </div>
         
         <div class="chat-messages" id="chatMessages">
@@ -214,6 +292,21 @@
                     <p>Hello! I'm your knowledge base assistant. Ask me anything about your indexed documents (markdown and PDF files).</p>
                 </div>
             </div>
+        </div>
+
+        <div class="index-section" id="indexSection">
+            <div style="margin-bottom: 10px; font-weight: 600; color: #333;">Index Documents</div>
+            <div class="index-controls">
+                <input 
+                    type="text" 
+                    class="index-input" 
+                    id="folderPathInput" 
+                    placeholder="Enter folder path to index..." 
+                    autocomplete="off"
+                />
+                <button type="button" class="index-button" id="indexButton">Index Folder</button>
+            </div>
+            <div class="index-status" id="indexStatus"></div>
         </div>
 
         <div class="chat-input-container">
@@ -236,9 +329,28 @@
         const chatForm = document.getElementById('chatForm');
         const chatInput = document.getElementById('chatInput');
         const sendButton = document.getElementById('sendButton');
+        const ragModeToggle = document.getElementById('ragModeToggle');
+        const indexButton = document.getElementById('indexButton');
+        const folderPathInput = document.getElementById('folderPathInput');
+        const indexStatus = document.getElementById('indexStatus');
 
         // Get API base URL - defaults to current origin
         const API_BASE_URL = window.location.origin;
+
+        // Get current RAG mode
+        function getRagMode() {
+            return ragModeToggle.value;
+        }
+
+        // Show index status message
+        function showIndexStatus(message, isError = false) {
+            indexStatus.textContent = message;
+            indexStatus.className = `index-status ${isError ? 'error' : 'success'}`;
+            indexStatus.style.display = 'block';
+            setTimeout(() => {
+                indexStatus.style.display = 'none';
+            }, 5000);
+        }
 
         function addMessage(content, isUser = false, isError = false) {
             const messageDiv = document.createElement('div');
@@ -307,12 +419,16 @@
             addLoadingMessage();
             
             try {
+                const ragMode = getRagMode();
                 const response = await fetch(`${API_BASE_URL}/search`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ query }),
+                    body: JSON.stringify({ 
+                        query,
+                        rag_mode: ragMode
+                    }),
                 });
                 
                 removeLoadingMessage();
@@ -357,6 +473,58 @@
             if (query) {
                 chatInput.value = '';
                 sendMessage(query);
+            }
+        });
+
+        // Handle folder indexing
+        async function indexFolder() {
+            const folderPath = folderPathInput.value.trim();
+            if (!folderPath) {
+                showIndexStatus('Please enter a folder path', true);
+                return;
+            }
+
+            indexButton.disabled = true;
+            folderPathInput.disabled = true;
+            showIndexStatus('Indexing folder...', false);
+
+            try {
+                const ragMode = getRagMode();
+                const response = await fetch(`${API_BASE_URL}/index-local`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        folder_path: folderPath,
+                        rag_mode: ragMode
+                    }),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: 'Unknown error occurred' }));
+                    throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const message = `Indexed ${data.files_indexed || 0} files, ${data.chunks_indexed || 0} chunks. ${data.index_built ? 'Index built successfully.' : ''}`;
+                showIndexStatus(message, false);
+                folderPathInput.value = '';
+            } catch (error) {
+                console.error('Indexing error:', error);
+                showIndexStatus(error.message || 'Failed to index folder', true);
+            } finally {
+                indexButton.disabled = false;
+                folderPathInput.disabled = false;
+            }
+        }
+
+        // Event listeners
+        indexButton.addEventListener('click', indexFolder);
+        folderPathInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                indexFolder();
             }
         });
 

@@ -80,6 +80,20 @@ Key settings include:
   - "toon": Fully flattened TOON format (maximum token savings, ~40%)
   - "hybrid": TOON for content + JSON for metadata (recommended, ~30% savings)
   - "json": JSON format (structured but verbose, for debugging)
+
+**RAG Mode**:
+* ``RAG_MODE`` – RAG mode ("traditional" or "leann").  Defaults to "traditional".
+  - "traditional": Uses precomputed embeddings with full vector database index
+  - "leann": Uses on-demand embeddings with pruned graph index (95-97% storage savings)
+
+**LEANN** (when RAG_MODE=leann):
+* ``LEANN_INDEX_PATH`` – Path to LEANN index file.  Defaults to "./indexes/kb_index.leann".
+* ``LEANN_BACKEND`` – Backend type ("hnsw" or "diskann").  Defaults to "hnsw".
+* ``LEANN_GRAPH_DEGREE`` – Graph degree parameter.  Defaults to 32.
+* ``LEANN_COMPLEXITY`` – Build/search complexity parameter.  Defaults to 64.
+* ``LEANN_EMBEDDING_MODEL`` – Embedding model for LEANN.  Defaults to EMBEDDING_MODEL_ID value.
+* ``LEANN_COMPACT`` – Use compact storage.  Defaults to true.
+* ``LEANN_RECOMPUTE`` – Enable embedding recomputation.  Defaults to true.
 """
 
 from __future__ import annotations
@@ -187,6 +201,23 @@ class Settings:
     )
     tavily_api_key: str | None = os.environ.get("TAVILY_API_KEY")
     serpapi_api_key: str | None = os.environ.get("SERPAPI_API_KEY")
+
+    # RAG mode configuration
+    rag_mode: str = os.environ.get("RAG_MODE", "traditional").lower()
+
+    # LEANN settings (when RAG_MODE=leann)
+    leann_index_path: str = os.environ.get(
+        "LEANN_INDEX_PATH", "./indexes/kb_index.leann"
+    )
+    leann_backend: str = os.environ.get("LEANN_BACKEND", "hnsw").lower()
+    leann_graph_degree: int = int(os.environ.get("LEANN_GRAPH_DEGREE", "32"))
+    leann_complexity: int = int(os.environ.get("LEANN_COMPLEXITY", "64"))
+    leann_embedding_model: str = os.environ.get(
+        "LEANN_EMBEDDING_MODEL",
+        os.environ.get("EMBEDDING_MODEL_ID", "intfloat/e5-small-v2"),
+    )
+    leann_compact: bool = os.environ.get("LEANN_COMPACT", "true").lower() == "true"
+    leann_recompute: bool = os.environ.get("LEANN_RECOMPUTE", "true").lower() == "true"
 
 
 def get_settings() -> Settings:

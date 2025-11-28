@@ -41,17 +41,42 @@ from .utils.logging import get_logger, log_event
 
 settings = get_settings()
 
-# Initialise repository and services
-try:
-    kb_repo = RepositoryFactory.create(settings)
-except Exception as exc:
-    raise
-# Initialize LLM client (defaults to Anthropic if API key is set)
-llm_client = LLMClient(settings) if settings.llm_provider else None
-ingestion_service = IngestionService(kb_repo, settings=settings)
-search_service = SearchService(
-    kb_repo, llm_client=llm_client, max_chunks=settings.max_chunks, settings=settings
-)
+# Function to create repository based on RAG_MODE
+def create_repository(rag_mode: str | None = None) -> tuple:
+    """Create repository and services based on RAG_MODE.
+    
+    Args:
+        rag_mode: Optional RAG mode override ("traditional" or "leann").
+                  If None, uses settings.rag_mode.
+    
+    Returns:
+        Tuple of (kb_repo, ingestion_service, search_service)
+    """
+    # Create a temporary settings object with overridden RAG_MODE if provided
+    if rag_mode:
+        import copy
+        temp_settings = copy.deepcopy(settings)
+        temp_settings.rag_mode = rag_mode.lower()
+        repo_settings = temp_settings
+    else:
+        repo_settings = settings
+    
+    try:
+        kb_repo = RepositoryFactory.create(repo_settings)
+    except Exception as exc:
+        raise
+    
+    # Initialize LLM client (defaults to Anthropic if API key is set)
+    llm_client = LLMClient(settings) if settings.llm_provider else None
+    ingestion_service = IngestionService(kb_repo, settings=repo_settings)
+    search_service = SearchService(
+        kb_repo, llm_client=llm_client, max_chunks=settings.max_chunks, settings=settings
+    )
+    
+    return kb_repo, ingestion_service, search_service
+
+# Initialise repository and services with default RAG_MODE
+kb_repo, ingestion_service, search_service = create_repository()
 
 
 app = FastAPI(
@@ -89,13 +114,15 @@ class IndexRequest(BaseModel):
     repo_url: str
     token: str
     branch: str | None = None
+    rag_mode: str | None = None  # Optional RAG mode override
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "repo_url": "https://gitlab.com/namespace/project.git",
                 "token": "your-gitlab-token",
-                "branch": "main"
+                "branch": "main",
+                "rag_mode": "leann"
             }
         }
     }
@@ -103,11 +130,13 @@ class IndexRequest(BaseModel):
 
 class SearchRequest(BaseModel):
     query: str
+    rag_mode: str | None = None  # Optional RAG mode override
 
     model_config = {
         "json_schema_extra": {
             "example": {
-                "query": "What is the authentication flow?"
+                "query": "What is the authentication flow?",
+                "rag_mode": "leann"
             }
         }
     }
@@ -115,11 +144,13 @@ class SearchRequest(BaseModel):
 
 class LocalIndexRequest(BaseModel):
     folder_path: str
+    rag_mode: str | None = None  # Optional RAG mode override
 
     model_config = {
         "json_schema_extra": {
             "example": {
-                "folder_path": "/path/to/markdown/folder"
+                "folder_path": "/path/to/markdown/folder",
+                "rag_mode": "leann"
             }
         }
     }
@@ -130,12 +161,29 @@ def index_repo(req: IndexRequest):
     """Full index of a GitLab repository.
     
     Indexes markdown (.md, .markdown), PDF (.pdf), and Word (.docx) files from the repository.
+    
+    Supports RAG_MODE parameter to switch between traditional and LEANN indexing.
     """
-    log_event(logger, "api_index_request", repo=req.repo_url, branch=req.branch)
+    log_event(logger, "api_index_request", repo=req.repo_url, branch=req.branch, rag_mode=req.rag_mode)
     try:
-        summary = ingestion_service.index_repository(
+        # Use RAG_MODE from request or default from settings
+        rag_mode = req.rag_mode or settings.rag_mode
+        kb_repo, ingestion_svc, _ = create_repository(rag_mode)
+        
+        summary = ingestion_svc.index_repository(
             req.repo_url, req.token, branch=req.branch
         )
+        
+        # Auto-build LEANN index if using LEANN mode
+        if rag_mode == "leann" and hasattr(kb_repo, "build_index"):
+            try:
+                kb_repo.build_index()
+                summary["index_built"] = True
+                log_event(logger, "api_leann_index_built", repo=req.repo_url)
+            except Exception as build_exc:
+                log_event(logger, "api_leann_index_build_error", error=str(build_exc))
+                summary["index_build_warning"] = str(build_exc)
+        
         return summary
     except Exception as exc:
         log_event(logger, "api_index_error", error=str(exc))
@@ -144,12 +192,29 @@ def index_repo(req: IndexRequest):
 
 @app.post("/delta-index")
 def delta_index_repo(req: IndexRequest):
-    """Delta index of a GitLab repository."""
-    log_event(logger, "api_delta_index_request", repo=req.repo_url, branch=req.branch)
+    """Delta index of a GitLab repository.
+    
+    Note: LEANN mode requires full rebuild for delta indexing.
+    """
+    log_event(logger, "api_delta_index_request", repo=req.repo_url, branch=req.branch, rag_mode=req.rag_mode)
     try:
-        summary = ingestion_service.delta_index_repository(
+        rag_mode = req.rag_mode or settings.rag_mode
+        kb_repo, ingestion_svc, _ = create_repository(rag_mode)
+        
+        summary = ingestion_svc.delta_index_repository(
             req.repo_url, req.token, branch=req.branch
         )
+        
+        # Auto-build LEANN index if using LEANN mode (delta requires rebuild)
+        if rag_mode == "leann" and hasattr(kb_repo, "build_index"):
+            try:
+                kb_repo.build_index()
+                summary["index_rebuilt"] = True
+                log_event(logger, "api_leann_index_rebuilt", repo=req.repo_url)
+            except Exception as build_exc:
+                log_event(logger, "api_leann_index_build_error", error=str(build_exc))
+                summary["index_build_warning"] = str(build_exc)
+        
         return summary
     except Exception as exc:
         log_event(logger, "api_delta_index_error", error=str(exc))
@@ -165,6 +230,7 @@ def health_check():
         return {
             "status": "healthy",
             "service": "markdown-rag",
+            "rag_mode": settings.rag_mode,
             "repository_type": settings.repository_type,
         }
     except Exception as exc:
@@ -183,10 +249,26 @@ def index_local_folder(req: LocalIndexRequest):
 
     The folder path can be absolute or relative to the current working directory.
     PDF files are parsed using pdfplumber, Word files using python-docx to extract text content.
+    
+    Supports RAG_MODE parameter to switch between traditional and LEANN indexing.
     """
-    log_event(logger, "api_local_index_request", folder=req.folder_path)
+    log_event(logger, "api_local_index_request", folder=req.folder_path, rag_mode=req.rag_mode)
     try:
-        summary = ingestion_service.index_local_folder(req.folder_path)
+        rag_mode = req.rag_mode or settings.rag_mode
+        kb_repo, ingestion_svc, _ = create_repository(rag_mode)
+        
+        summary = ingestion_svc.index_local_folder(req.folder_path)
+        
+        # Auto-build LEANN index if using LEANN mode
+        if rag_mode == "leann" and hasattr(kb_repo, "build_index"):
+            try:
+                kb_repo.build_index()
+                summary["index_built"] = True
+                log_event(logger, "api_leann_index_built", folder=req.folder_path)
+            except Exception as build_exc:
+                log_event(logger, "api_leann_index_build_error", error=str(build_exc))
+                summary["index_build_warning"] = str(build_exc)
+        
         return summary
     except ValueError as exc:
         log_event(logger, "api_local_index_error", error=str(exc))
@@ -202,10 +284,15 @@ def search(req: SearchRequest):
     
     This endpoint searches all indexed content (local folders and repositories).
     For repository-specific search with access control, use /search-repo instead.
+    
+    Supports RAG_MODE parameter to switch between traditional and LEANN search.
     """
-    log_event(logger, "api_search_request", query=req.query)
+    log_event(logger, "api_search_request", query=req.query, rag_mode=req.rag_mode)
     try:
-        result = search_service.answer(req.query)
+        rag_mode = req.rag_mode or settings.rag_mode
+        _, _, search_svc = create_repository(rag_mode)
+        
+        result = search_svc.answer(req.query)
         return result
     except Exception as exc:
         log_event(logger, "api_search_error", error=str(exc))
@@ -252,8 +339,56 @@ def search_repo(
         )
     
     try:
-        result = search_service.answer_with_token_validation(query=req.query, token=token)
+        # Use RAG_MODE from request or default from settings
+        rag_mode = req.rag_mode or settings.rag_mode
+        _, _, search_svc = create_repository(rag_mode)
+        
+        result = search_svc.answer_with_token_validation(query=req.query, token=token)
         return result
     except Exception as exc:
         log_event(logger, "api_search_repo_error", query=req.query, error=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/build-leann-index")
+def build_leann_index():
+    """Explicitly build the LEANN index from buffered documents.
+    
+    This endpoint allows manual control over LEANN index building.
+    Useful when you want to add documents incrementally and build the index later.
+    
+    Returns:
+        Dictionary with build status and index information.
+    """
+    log_event(logger, "api_build_leann_index_request")
+    try:
+        # Check if current repository is LEANN
+        if not hasattr(kb_repo, "build_index"):
+            raise HTTPException(
+                status_code=400,
+                detail="Current RAG_MODE is not 'leann'. Set RAG_MODE=leann to use LEANN indexing."
+            )
+        
+        # Build the index
+        kb_repo.build_index()
+        
+        # Get index information
+        index_path = getattr(kb_repo, "index_path", "unknown")
+        index_size = 0
+        if os.path.exists(index_path):
+            index_size = os.path.getsize(index_path)
+        
+        result = {
+            "status": "success",
+            "index_path": index_path,
+            "index_size_mb": round(index_size / (1024 * 1024), 2),
+            "documents_count": len(kb_repo._pending_chunks) if hasattr(kb_repo, "_pending_chunks") else 0,
+        }
+        
+        log_event(logger, "api_build_leann_index_success", **result)
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log_event(logger, "api_build_leann_index_error", error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))

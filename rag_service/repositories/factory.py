@@ -35,7 +35,14 @@ class RepositoryFactory:
             ValueError: If the configured repository type is not supported.
             ImportError: If required dependencies are not installed.
         """
-        # Get repository type from settings (default to chromadb)
+        # Check RAG_MODE first - if leann, use LEANN repository
+        rag_mode = getattr(settings, "rag_mode", "traditional").lower()
+        
+        if rag_mode == "leann":
+            from .leann_kb_repo import LeannKnowledgeBaseRepository
+            return LeannKnowledgeBaseRepository(settings)
+
+        # Otherwise, use traditional vector database based on REPOSITORY_TYPE
         repo_type = getattr(settings, "repository_type", None) or "chromadb"
 
         if repo_type.lower() == "chromadb":
@@ -53,6 +60,6 @@ class RepositoryFactory:
         else:
             raise ValueError(
                 f"Unsupported repository type: {repo_type}. "
-                "Supported types: chromadb, pgvector, cosmosdb"
+                "Supported types: chromadb, pgvector, cosmosdb, leann (via RAG_MODE=leann)"
             )
 

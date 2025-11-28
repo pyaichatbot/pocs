@@ -7,6 +7,10 @@ services:
     container_name: rag-service
     env_file:
       - .env
+    # ChromaDB dependency only needed for traditional mode (RAG_MODE=traditional)
+    # When RAG_MODE=leann, LEANN uses file-based storage - no external database required
+    # Note: Docker Compose doesn't support conditional depends_on, so chromadb
+    # will start but won't block rag-service if it fails (when using LEANN mode)
     depends_on:
       chromadb:
         condition: service_healthy
@@ -50,7 +54,7 @@ services:
       - RERANKER_MODEL_ID=${RERANKER_MODEL_ID:-cross-encoder/ms-marco-MiniLM-L-6-v2}
       
       # Web Crawler Configuration
-      - WEB_CRAWLER_ENABLED=${WEB_CRAWLER_ENABLED:-true}
+      - WEB_CRAWLER_ENABLED=${WEB_CRAWLER_ENABLED:-false}
       - ALLOWED_WEB_DOMAINS=${ALLOWED_WEB_DOMAINS:-}
       - WEB_CRAWLER_TIMEOUT=${WEB_CRAWLER_TIMEOUT:-10}
       - WEB_CRAWLER_MAX_SIZE=${WEB_CRAWLER_MAX_SIZE:-1000000}
@@ -65,7 +69,7 @@ services:
       - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-20000}
 
       # Web Search Configuration
-      - WEB_SEARCH_ENABLED=${WEB_SEARCH_ENABLED:-true}
+      - WEB_SEARCH_ENABLED=${WEB_SEARCH_ENABLED:-false}
       - WEB_SEARCH_PROVIDER=${WEB_SEARCH_PROVIDER:-duckduckgo}
       - WEB_SEARCH_MAX_RESULTS=${WEB_SEARCH_MAX_RESULTS:-3}
       - WEB_SEARCH_MAX_CRAWL_URLS=${WEB_SEARCH_MAX_CRAWL_URLS:-3}
@@ -75,8 +79,23 @@ services:
 
       # LLM Token Format Configuration
       - USE_LLM_TOKEN_FORMAT=${USE_LLM_TOKEN_FORMAT:-hybrid}
+
+      # RAG Mode Configuration
+      # Options: "traditional" (uses vector DB) or "leann" (uses file-based graph index)
+      - RAG_MODE=${RAG_MODE:-traditional}
+      
+      # LEANN Configuration (only used when RAG_MODE=leann)
+      # LEANN uses file-based storage (.leann files) - no database required
+      - LEANN_INDEX_PATH=${LEANN_INDEX_PATH:-/app/data/indexes/kb_index.leann}
+      - LEANN_BACKEND=${LEANN_BACKEND:-hnsw}
+      - LEANN_GRAPH_DEGREE=${LEANN_GRAPH_DEGREE:-32}
+      - LEANN_COMPLEXITY=${LEANN_COMPLEXITY:-64}
+      - LEANN_EMBEDDING_MODEL=${LEANN_EMBEDDING_MODEL:-${EMBEDDING_MODEL_ID:-intfloat/e5-small-v2}}
+      - LEANN_COMPACT=${LEANN_COMPACT:-true}
+      - LEANN_RECOMPUTE=${LEANN_RECOMPUTE:-true}
     volumes:
       - rag-data:/app/data
+      - leann-indexes:/app/data/indexes
       - ./test_data:/app/test_data:ro  # Mount test data for local testing (read-only)
     restart: unless-stopped
     healthcheck:
@@ -141,6 +160,8 @@ volumes:
   chromadb-data:
     driver: local
   postgres-data:
+    driver: local
+  leann-indexes:
     driver: local
 
 networks:

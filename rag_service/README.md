@@ -12,6 +12,7 @@ A production-ready Retrieval-Augmented Generation (RAG) service for indexing Git
 - **Hybrid Search**: Combines semantic and keyword search for better results
 - **LLM Integration**: Supports Azure OpenAI and Anthropic for generating answers
 - **Multiple Vector DB Support**: ChromaDB (default), pgvector, and Cosmos DB
+- **LEANN Support**: Low-storage vector index with 95-97% storage savings (file-based, no database required)
 - **Web Search**: Automatically searches the web when knowledge base results are insufficient (DuckDuckGo, Tavily, SerpAPI)
 - **Web Crawler**: Extracts and crawls URLs from queries (with domain allowlist)
 - **REST API**: FastAPI-based API with OpenAPI documentation
@@ -245,7 +246,8 @@ Index markdown, PDF, and Word files from a local folder path.
 **Request Body**:
 ```json
 {
-  "folder_path": "/path/to/documents/folder"
+  "folder_path": "/path/to/documents/folder",
+  "rag_mode": "leann"  // Optional: override RAG_MODE for this request
 }
 ```
 
@@ -266,7 +268,8 @@ Query the knowledge base and get an answer.
 **Request Body**:
 ```json
 {
-  "query": "What is the authentication flow?"
+  "query": "What is the authentication flow?",
+  "rag_mode": "leann"  // Optional: override RAG_MODE for this request
 }
 ```
 
@@ -293,6 +296,22 @@ Serve the interactive chatbot HTML interface for querying the knowledge base.
 
 **Response**: HTML page with chatbot interface
 
+### `POST /build-leann-index`
+
+Explicitly build the LEANN index from buffered documents (only when `RAG_MODE=leann`).
+
+**Request Body**: None
+
+**Response**:
+```json
+{
+  "status": "success",
+  "index_path": "/app/data/indexes/kb_index.leann",
+  "index_size_mb": 125.5,
+  "documents_count": 1000
+}
+```
+
 ### `GET /health`
 
 Health check endpoint.
@@ -302,6 +321,7 @@ Health check endpoint.
 {
   "status": "healthy",
   "service": "rag-service",
+  "rag_mode": "traditional",
   "repository_type": "chromadb"
 }
 ```
@@ -475,8 +495,9 @@ The repository factory (`repositories/factory.py`) supports multiple vector data
 - **ChromaDB** (default): `REPOSITORY_TYPE=chromadb`
 - **pgvector**: `REPOSITORY_TYPE=pgvector`
 - **Cosmos DB**: `REPOSITORY_TYPE=cosmosdb`
+- **LEANN**: `RAG_MODE=leann` (file-based, no database required)
 
-No code changes needed - just set `REPOSITORY_TYPE` environment variable.
+No code changes needed - just set `REPOSITORY_TYPE` or `RAG_MODE` environment variable.
 
 #### ChromaDB Configuration
 ```bash
@@ -504,6 +525,33 @@ REPOSITORY_TYPE=cosmosdb
 COSMOS_ENDPOINT=https://your-account.documents.azure.com:443/
 COSMOS_KEY=your-cosmos-key
 ```
+
+#### LEANN Configuration (Low-Storage Vector Index)
+LEANN uses file-based storage (`.leann` files) instead of a database, achieving 95-97% storage savings.
+
+```bash
+RAG_MODE=leann
+LEANN_INDEX_PATH=/app/data/indexes/kb_index.leann  # Docker path
+LEANN_BACKEND=hnsw  # or "diskann"
+LEANN_GRAPH_DEGREE=32
+LEANN_COMPLEXITY=64
+LEANN_EMBEDDING_MODEL=intfloat/e5-small-v2  # or your preferred model
+LEANN_COMPACT=true
+LEANN_RECOMPUTE=true
+```
+
+**Benefits**:
+- 95-97% storage reduction compared to traditional vector DBs
+- No database service required (file-based)
+- Portable index files (easy backup/copy)
+- Perfect for storage-constrained environments
+
+**Trade-offs**:
+- Embeddings computed on-demand (may be slower for some workloads)
+- Delta indexing requires full rebuild
+- Best for large static corpora
+
+See [LEANN_STORAGE_EXPLANATION.md](LEANN_STORAGE_EXPLANATION.md) for detailed architecture information.
 
 ### LLM Provider Abstraction
 
@@ -625,6 +673,15 @@ WEB_SEARCH_MIN_SCORE_THRESHOLD=0.5
    docker-compose -f docker-compose.yml -f docker-compose.pgvector.yml up -d
    ```
 
+   **Option D: LEANN (file-based, no database required):**
+   ```bash
+   # Set RAG_MODE=leann in .env file or environment
+   RAG_MODE=leann docker-compose up -d
+   # Or add to .env:
+   # RAG_MODE=leann
+   # LEANN_INDEX_PATH=/app/data/indexes/kb_index.leann
+   ```
+
 3. **Check logs:**
    ```bash
    docker-compose logs -f rag-service
@@ -688,9 +745,11 @@ Vector database service for pgvector.
 
 ### Volumes
 
-- `rag-data`: Persistent storage for vector database data
-- `chromadb-data`: Persistent storage for ChromaDB
-- `postgres-data`: Persistent storage for PostgreSQL
+- `rag-data`: Persistent storage for vector database data and LEANN indexes
+  - ChromaDB (traditional): `/app/data/chromadb/`
+  - LEANN: `/app/data/indexes/*.leann`
+- `chromadb-data`: Persistent storage for ChromaDB server (when using profile)
+- `postgres-data`: Persistent storage for PostgreSQL (when using pgvector)
 - `test_data`: Mounted test data folder (read-only)
 
 ### Production Deployment
@@ -808,6 +867,11 @@ mypy rag_service/
 - **ChromaDB**: Ensure the storage path is writable
 - **pgvector**: Ensure PostgreSQL has the vector extension installed and connection string is correct
 - **Cosmos DB**: Verify endpoint URL and access key
+- **LEANN**: 
+  - Ensure `LEANN_INDEX_PATH` directory exists and is writable
+  - Check that LEANN package is installed: `pip install leann`
+  - For Docker: Index path should be within `/app/data/` volume mount
+  - If index build fails, check logs for system dependency errors
 
 ### GitLab Clone Failures
 

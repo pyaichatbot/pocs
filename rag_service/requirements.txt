@@ -30,4 +30,5 @@ chromadb>=0.4.0  # For ChromaDB support
 psycopg[binary]>=3.1.0  # PostgreSQL driver for pgvector
 pgvector>=0.4.0  # pgvector extension support
 azure-cosmos>=4.5.0  # For Cosmos DB support
+leann>=0.3.0  # LEANN low-storage vector index (optional, for RAG_MODE=leann)
 
