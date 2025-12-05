@@ -1,0 +1,46 @@
+name: Strix Security Scan
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main ]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      
+      - name: Install Strix
+        run: pipx install strix-agent
+      
+      - name: Run Strix Security Scan
+        env:
+          STRIX_LLM: ${{ secrets.STRIX_LLM }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: |
+          strix --target ./app --instruction "Scan for security vulnerabilities. Fail on critical findings." --fail-on-critical || true
+      
+      - name: Upload Strix Results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: strix-results
+          path: agent_runs/
+      
+      - name: Check for critical vulnerabilities
+        run: |
+          if [ -d "agent_runs" ] && [ "$(find agent_runs -name '*.json' -o -name '*.md' | wc -l)" -gt 0 ]; then
+            echo "Strix found security vulnerabilities. Please review the artifacts."
+            echo "::warning::Security vulnerabilities detected. Review Strix findings in artifacts."
+            # Uncomment the line below to fail the build on critical findings
+            # exit 1
+          fi
+

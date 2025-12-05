@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome - VulnBoard{% endblock %}
+
+{% block content %}
+<div class="landing-container">
+    <h1>Welcome to VulnBoard</h1>
+    <p class="subtitle">An Intentionally Vulnerable AI Application for Security Training</p>
+    
+    <div class="warning-box">
+        <h2>⚠️ WARNING</h2>
+        <p>This application contains <strong>intentional security vulnerabilities</strong> for educational purposes only.</p>
+        <p><strong>DO NOT USE IN PRODUCTION.</strong></p>
+    </div>
+    
+    <div class="info-section">
+        <h2>About This Application</h2>
+        <p>VulnBoard demonstrates both traditional and AI-specific security vulnerabilities:</p>
+        <ul>
+            <li><strong>Traditional Vulnerabilities:</strong> IDOR, SQL Injection, XSS</li>
+            <li><strong>AI-Specific Vulnerabilities:</strong> Prompt Injection, Insecure AI Usage, Data Leakage</li>
+        </ul>
+    </div>
+    
+    <div class="demo-section">
+        <h2>Get Started</h2>
+        <p>To explore the vulnerabilities, please log in:</p>
+        <a href="/login" class="btn-primary">Login</a>
+        
+        <div class="credentials">
+            <h3>Demo Credentials:</h3>
+            <p><strong>Admin:</strong> username: <code>admin</code> / password: <code>admin123</code></p>
+            <p><strong>User:</strong> username: <code>user</code> / password: <code>user123</code></p>
+        </div>
+    </div>
+    
+    <div class="features-section">
+        <h2>Features to Explore</h2>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <h3>User Profiles</h3>
+                <p>Test IDOR (Insecure Direct Object Reference) vulnerabilities</p>
+            </div>
+            <div class="feature-card">
+                <h3>Search</h3>
+                <p>Test SQL Injection and Reflected XSS vulnerabilities</p>
+            </div>
+            <div class="feature-card">
+                <h3>AI Chat</h3>
+                <p>Test Prompt Injection and Data Leakage vulnerabilities</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

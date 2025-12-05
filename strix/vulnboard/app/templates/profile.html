@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Profile - VulnBoard{% endblock %}
+
+{% block content %}
+<div class="profile-container">
+    <h2>User Profile</h2>
+    
+    {% if not is_own_profile %}
+    <div class="warning">
+        <strong>IDOR Vulnerability:</strong> You are viewing another user's profile. 
+        This should not be possible without proper authorization.
+    </div>
+    {% endif %}
+    
+    <div class="profile-info">
+        <p><strong>ID:</strong> {{ user.id }}</p>
+        <p><strong>Username:</strong> {{ user.username }}</p>
+        <p><strong>Email:</strong> {{ user.email }}</p>
+        <p><strong>Role:</strong> {{ user.role }}</p>
+    </div>
+    
+    <!-- VULNERABILITY: XSS - user data reflected without sanitization -->
+    <!-- Attack example: If username contains <script>alert('XSS')</script>, it will execute -->
+    <div class="user-display">
+        <h3>Welcome, {{ user.username }}!</h3>
+        <p>Email: {{ user.email }}</p>
+    </div>
+    
+    <div class="profile-actions">
+        <a href="/search">Search Posts</a>
+        <a href="/chat">AI Chat</a>
+    </div>
+</div>
+{% endblock %}
+

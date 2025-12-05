@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Search - VulnBoard{% endblock %}
+
+{% block content %}
+<div class="search-container">
+    <h2>Search Posts</h2>
+    
+    <form method="GET" action="/search">
+        <div class="form-group">
+            <input type="text" name="q" value="{{ query }}" placeholder="Search posts..." required>
+            <button type="submit">Search</button>
+        </div>
+    </form>
+    
+    {% if query %}
+    <!-- VULNERABILITY: Reflected XSS - search query reflected without sanitization -->
+    <!-- Attack example: ?q=<script>alert('XSS')</script> -->
+    <div class="search-results">
+        <h3>Search results for: {{ query }}</h3>
+        
+        {% if sql_error %}
+        <div class="sql-injection-error">
+            <strong>⚠️ SQL Injection Detected!</strong>
+            <p>This demonstrates the SQL injection vulnerability. The query caused an error:</p>
+            <pre>{{ sql_error }}</pre>
+            <p><em>In a real attack, this could be used to extract data or modify the database.</em></p>
+        </div>
+        {% endif %}
+        
+        {% if ai_response %}
+        <div class="ai-response">
+            <strong>AI Response:</strong>
+            <p>{{ ai_response }}</p>
+        </div>
+        {% endif %}
+        
+        {% if results %}
+        <ul class="results-list">
+            {% for post in results %}
+            <li>
+                <h4>{{ post.title }}</h4>
+                <p>{{ post.content }}</p>
+                <small>Post ID: {{ post.id }}, User ID: {{ post.user_id }}</small>
+            </li>
+            {% endfor %}
+        </ul>
+        {% elif not sql_error %}
+        <p>No results found.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    <div class="vulnerability-info">
+        <h3>Vulnerabilities in this page:</h3>
+        <ul>
+            <li><strong>SQL Injection:</strong> Try searching with: <code>'; DROP TABLE posts; --</code></li>
+            <li><strong>Reflected XSS:</strong> Try searching with: <code>&lt;script&gt;alert('XSS')&lt;/script&gt;</code></li>
+        </ul>
+    </div>
+</div>
+{% endblock %}
+
