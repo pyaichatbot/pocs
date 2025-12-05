@@ -4,7 +4,7 @@ This document provides sample Strix findings and how to interpret them for train
 
 ## Sample Run Structure
 
-When Strix runs, it creates output in `agent_runs/<run-name>/` with:
+When Strix runs, it creates output in `strix_runs/<run-name>/` with:
 - Vulnerability reports (JSON/Markdown)
 - PoC exploits
 - Remediation recommendations

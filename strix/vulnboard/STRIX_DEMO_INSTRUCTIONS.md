@@ -101,7 +101,7 @@ Explain that VulnBoard is an intentionally vulnerable application (either AI-pow
    This tests the application over HTTP for runtime vulnerabilities.
 
 4. **Review findings:**
-   - Strix findings are saved in `agent_runs/<run-name>/`
+   - Strix findings are saved in `strix_runs/<run-name>/`
    - Show how developers can catch issues before committing code
 
 ### 4. CI/CD Integration (2-3 minutes)

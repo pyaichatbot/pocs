@@ -33,11 +33,11 @@ jobs:
         if: always()
         with:
           name: strix-results
-          path: agent_runs/
+          path: strix_runs/
       
       - name: Check for critical vulnerabilities
         run: |
-          if [ -d "agent_runs" ] && [ "$(find agent_runs -name '*.json' -o -name '*.md' | wc -l)" -gt 0 ]; then
+          if [ -d "strix_runs" ] && [ "$(find strix_runs -name '*.json' -o -name '*.md' | wc -l)" -gt 0 ]; then
             echo "Strix found security vulnerabilities. Please review the artifacts."
             echo "::warning::Security vulnerabilities detected. Review Strix findings in artifacts."
             # Uncomment the line below to fail the build on critical findings

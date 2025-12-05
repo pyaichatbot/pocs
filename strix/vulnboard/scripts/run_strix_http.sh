@@ -50,6 +50,10 @@ if [ -z "$LLM_API_KEY" ]; then
     exit 1
 fi
 
+# Note: Strix doesn't have a built-in environment variable to limit agent count.
+# We add an instruction to request single-agent execution to help avoid rate limits.
+# This is a request, not a guarantee - Strix may still use multiple agents.
+
 # Check if app is running
 APP_URL="${APP_URL:-http://localhost:8000}"
 echo "Checking if application is running at $APP_URL..."
@@ -75,16 +79,19 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
 # Run Strix against the running application
 cd "$PROJECT_ROOT"
 
+# Build instruction - request single agent to help avoid rate limits
+INSTRUCTION="Prioritize IDOR, SQL injection, XSS, prompt injection, and AI-specific vulnerabilities. Generate clear PoC and remediation steps. Use a single agent to avoid rate limits."
+
 strix --target "$APP_URL" \
-    --instruction "Prioritize IDOR, SQL injection, XSS, prompt injection, and AI-specific vulnerabilities. Generate clear PoC and remediation steps." \
+    --instruction "$INSTRUCTION" \
     || {
         echo ""
         echo "Strix scan completed with findings."
-        echo "Results should be in: agent_runs/"
+        echo "Results should be in: strix_runs/"
         exit 0
     }
 
 echo ""
 echo "Strix scan completed successfully."
-echo "Results are in: agent_runs/"
+echo "Results are in: strix_runs/"
 
