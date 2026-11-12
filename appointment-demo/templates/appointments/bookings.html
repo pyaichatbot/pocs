@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+{% block title %}
+  My appointments · Gather
+{% endblock %}
+{% block content %}
+  <section class="page-heading">
+    <div>
+      <p class="eyebrow">
+        YOUR TIME, IN ONE PLACE
+      </p>
+      <h1>
+        Coming up next.
+      </h1>
+      <p class="lede">
+        Your upcoming appointments, ready when you are.
+      </p>
+    </div>
+    <a class="button" href="{% url 'schedule' %}">
+      Book an appointment ↗
+    </a>
+  </section>
+  <div class="appointment-list">
+    {% for booking in bookings %}
+      <article class="slot-row">
+        <div class="time">
+          <strong>
+            {{ booking.slot.starts_at|date:'H:i' }}
+          </strong>
+          <span>
+            {{ booking.slot.starts_at|date:'j M Y' }}
+          </span>
+        </div>
+        <div class="slot-info">
+          <h3>
+            <a href="{% url 'confirmation' booking.pk %}">
+              {{ booking.purpose }}
+            </a>
+          </h3>
+          <p>
+            {{ booking.slot.resource.name }} · {{ booking.attendee }}
+          </p>
+        </div>
+        <span class="status available">
+          Confirmed
+        </span>
+        <details class="cancel-details">
+          <summary>
+            Cancel appointment
+          </summary>
+          <form method="post" action="{% url 'cancel' booking.pk %}">
+            {% csrf_token %}
+            <p class="small">
+              Release this time slot?
+            </p>
+            <button class="button danger">
+              Yes, cancel
+            </button>
+          </form>
+        </details>
+      </article>
+    {% empty %}
+      <div class="empty">
+        <h2>
+          A little space in your calendar.
+        </h2>
+        <p>
+          You don't have any upcoming appointments yet.
+        </p>
+        <a class="button secondary" href="{% url 'schedule' %}">
+          Find a time →
+        </a>
+      </div>
+    {% endfor %}
+  </div>
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% block title %}
+  You're booked · Gather
+{% endblock %}
+{% block content %}
+  <section class="confirmation">
+    <span class="success-mark" aria-hidden="true">
+      ✓
+    </span>
+    <p class="eyebrow">
+      TIME WELL RESERVED
+    </p>
+    <h1>
+      You're booked.
+    </h1>
+    <p class="lede">
+      {{ booking.attendee }}, your appointment is confirmed.
+    </p>
+    <div class="booking-summary">
+      <h2>
+        {{ booking.purpose }}
+      </h2>
+      <p>
+        {{ booking.slot.resource.name }}
+      </p>
+      <p>
+        {{ booking.slot.starts_at|date:'l, j F Y' }}
+      </p>
+      <p class="large-time">
+        {{ booking.slot.starts_at|date:'H:i' }} – {{ booking.slot.ends_at|date:'H:i' }}
+      </p>
+      <p class="muted">
+        Europe/Berlin · Reference #{{ booking.pk }}
+      </p>
+    </div>
+    <a class="button" href="{% url 'my_bookings' %}">
+      View my appointments →
+    </a>
+  </section>
+{% endblock %}

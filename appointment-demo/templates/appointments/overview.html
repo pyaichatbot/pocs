@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+{% block title %}
+  Team overview · Gather
+{% endblock %}
+{% block content %}
+  <section class="page-heading">
+    <div>
+      <p class="eyebrow">
+        THE DAY AT A GLANCE
+      </p>
+      <h1>
+        Good planning starts here.
+      </h1>
+      <p class="lede">
+        A shared view of the conversations ahead.
+      </p>
+    </div>
+    <span class="pill">
+      Staff workspace
+    </span>
+  </section>
+  <form class="filters" method="get">
+    <div>
+      <label for="date">
+        Appointment date
+      </label>
+      <input id="date" type="date" name="date" value="{{ day|date:'Y-m-d' }}" required>
+    </div>
+    <button class="button">
+      View day
+    </button>
+    <p class="overview-count">
+      <strong>
+        {{ booked_count }}
+      </strong>
+      booked
+      <span>
+        /
+      </span>
+      <strong>
+        {{ available_count }}
+      </strong>
+      future slots available
+    </p>
+  </form>
+  <div class="section-title">
+    <h2>
+      {{ day|date:'l, j F' }}
+    </h2>
+    <span class="muted">
+      All people & rooms
+    </span>
+  </div>
+  <div class="appointment-list">
+    {% for booking in bookings %}
+      <article class="slot-row">
+        <div class="time">
+          <strong>
+            {{ booking.slot.starts_at|date:'H:i' }}
+          </strong>
+          <span>
+            30 minutes
+          </span>
+        </div>
+        <div class="slot-info">
+          <h3>
+            {{ booking.purpose }}
+          </h3>
+          <p>
+            {{ booking.slot.resource.name }} · {{ booking.attendee }}
+          </p>
+        </div>
+        <span class="status available">
+          Confirmed
+        </span>
+        <span class="muted small">
+          Booked by {{ booking.user.username }}
+        </span>
+      </article>
+    {% empty %}
+      <div class="empty">
+        <h3>
+          No bookings for this day.
+        </h3>
+        <p>
+          Appointments will appear here as your team books them.
+        </p>
+      </div>
+    {% endfor %}
+  </div>
+{% endblock %}

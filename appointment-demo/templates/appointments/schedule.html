@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% block content %}
+  <section class="page-heading">
+    <div>
+      <p class="eyebrow">
+        MAKE ROOM FOR A GOOD CONVERSATION
+      </p>
+      <h1>
+        Find your next opening.
+      </h1>
+      <p class="lede">
+        A focused half hour. A step forward.
+      </p>
+    </div>
+    <span class="pill">
+      30 min / appointment
+    </span>
+  </section>
+  <form class="filters" method="get">
+    <div>
+      <label for="date">
+        Choose a date
+      </label>
+      <input id="date" type="date" name="date" value="{{ day|date:'Y-m-d' }}" required>
+    </div>
+    <div>
+      <label for="resource">
+        Meet with / location
+      </label>
+      <select id="resource" name="resource">
+        <option value="">
+          All people & rooms
+        </option>
+        {% for resource in resources %}
+          <option value="{{ resource.pk }}" {% if selected_resource == resource.pk|stringformat:'s' %}selected{% endif %}>
+            {{ resource.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="button">
+      Show appointments
+    </button>
+  </form>
+  <div class="section-title">
+    <h2>
+      {{ day|date:'l, j F' }}
+    </h2>
+    <a href="?date={{ tomorrow|date:'Y-m-d' }}&resource={{ selected_resource|urlencode }}">
+      Next day
+      <span aria-hidden="true">
+        →
+      </span>
+    </a>
+  </div>
+  <div class="appointment-list">
+    {% for slot in slots %}
+      <article class="slot-row">
+        <div class="time">
+          <strong>
+            {{ slot.starts_at|date:'H:i' }}
+          </strong>
+          <span>
+            {{ slot.ends_at|date:'H:i' }}
+          </span>
+        </div>
+        <div class="slot-info">
+          <h3>
+            {{ slot.resource.name }}
+          </h3>
+          <p>
+            {{ slot.resource.description }}
+          </p>
+        </div>
+        {% if slot.booking %}
+          <span class="status booked">
+            Booked
+          </span>
+          <span class="slot-action muted">
+            Unavailable
+          </span>
+        {% else %}
+          <span class="status available">
+            Available
+          </span>
+          <a class="button secondary slot-action" href="{% url 'book' slot.pk %}" aria-label="Book {{ slot.resource.name }} at {{ slot.starts_at|date:'H:i' }}">
+            Book this time
+            <span aria-hidden="true">
+              ↗
+            </span>
+          </a>
+        {% endif %}
+      </article>
+    {% empty %}
+      <div class="empty">
+        <h3>
+          No upcoming slots on this day.
+        </h3>
+        <p>
+          Try the next day or choose another person or room.
+        </p>
+        <a class="button secondary" href="?date={{ tomorrow|date:'Y-m-d' }}">
+          Look at the next day →
+        </a>
+      </div>
+    {% endfor %}
+  </div>
+{% endblock %}

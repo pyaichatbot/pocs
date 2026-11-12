@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block title %}
+  Book an appointment · Gather
+{% endblock %}
+{% block content %}
+  <a class="back-link" href="{% url 'schedule' %}?date={{ slot.starts_at|date:'Y-m-d' }}">
+    ← Back to available times
+  </a>
+  <div class="booking-layout">
+    <section>
+      <p class="eyebrow">
+        YOUR NEXT CONVERSATION
+      </p>
+      <h1>
+        Let's make it happen.
+      </h1>
+      <p class="lede">
+        Just a couple of details and you're booked.
+      </p>
+      <div class="booking-summary">
+        <p class="eyebrow">
+          YOUR SELECTED TIME
+        </p>
+        <h2>
+          {{ slot.resource.name }}
+        </h2>
+        <p>
+          {{ slot.starts_at|date:'l, j F Y' }}
+        </p>
+        <p class="large-time">
+          {{ slot.starts_at|date:'H:i' }} – {{ slot.ends_at|date:'H:i' }}
+        </p>
+        <p class="muted">
+          30 minutes · Europe/Berlin
+        </p>
+      </div>
+    </section>
+    <section class="form-panel">
+      <h2>
+        Appointment details
+      </h2>
+      <form method="post">
+        {# CSRF token lets Django verify this form submission. #}
+      {% csrf_token %}
+        {{ form.non_field_errors }}
+        {% for field in form %}
+          <div class="field">
+            {{ field.label_tag }}{{ field }}{{ field.errors }}
+          </div>
+        {% endfor %}
+        <p class="muted small">
+          You can cancel from My appointments if your plans change.
+        </p>
+        <button class="button full">
+          Confirm appointment →
+        </button>
+      </form>
+    </section>
+  </div>
+{% endblock %}
